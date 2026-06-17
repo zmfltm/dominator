@@ -51,10 +51,10 @@ pnpm install
 pnpm start
 ```
 
-Open http://127.0.0.1:3000 in your browser
+open http://127.0.0.1:3000 in your browser
 
-Native Windows can also work if `node`, `pnpm`, `yt-dlp`, and `ffmpeg` are all
-on PATH. One PowerShell setup path is:
+Windows can also work if `node`, `pnpm`, `yt-dlp`, and `ffmpeg` are all
+on PATH. one PowerShell setup path is
 
 ```powershell
 winget install -e --id OpenJS.NodeJS.LTS
@@ -68,4 +68,4 @@ pnpm install
 pnpm start
 ```
 
-If PowerShell cannot find `yt-dlp` or `ffmpeg` after installing them close try again
+if PowerShell cannot find `yt-dlp` or `ffmpeg` after installing them close try again
