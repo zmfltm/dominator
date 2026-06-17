@@ -30,11 +30,6 @@ On macOS/Linux, there is also an optional helper script:
 ```bash
 ./scripts/start-local.sh
 ```
-
-The helper checks for required commands, installs Node dependencies if
-`node_modules` is missing, starts the app in the background, and writes local
-logs/pids to ignored files
-
 ## Windows
 
 WSL is the recommended setup
@@ -43,7 +38,7 @@ WSL is the recommended setup
 wsl --install -d Ubuntu
 ```
 
-Restart if Windows asks you to open Ubuntu then run
+restart if Windows asks you to open Ubuntu then run
 
 ```bash
 sudo apt update
