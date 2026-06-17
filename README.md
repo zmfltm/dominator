@@ -1,7 +1,3 @@
-# dominator
-
-## Prerequisites
-
 - Node >= 20 and pnpm
 - `yt-dlp` and `ffmpeg` on PATH
 
@@ -12,20 +8,20 @@ brew install yt-dlp ffmpeg
 sudo apt install yt-dlp ffmpeg
 ```
 
-If downloads start failing with extraction errors, update yt-dlp first
+if downloads start failing with extraction errors update yt-dlp first
 (`yt-dlp -U` or your package manager)
 
-## Run
+
 
 ```bash
 pnpm install
 pnpm start
 ```
 
-Open http://127.0.0.1:3000. Run from the repo root (the static page is
+open http://127.0.0.1:3000. Run from the repo root (the static page is
 served from `./public`). The server binds to 127.0.0.1 only.
 
-On macOS/Linux, there is also an optional helper script:
+macOS/Linux there is also an optional helper script:
 
 ```bash
 ./scripts/start-local.sh
