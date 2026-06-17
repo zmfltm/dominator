@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dominator</title>
+<link rel="icon" type="image/png" href="/logo.png?v=464aa8a">
+<style>
+  @font-face {
+    font-family: 'Ioskeley Mono';
+    src: url('/fonts/IoskeleyMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  :root {
+    --bg: #000;
+    --fg: #e8e8e8;
+    --dim: #555;
+    --line: #2a2a2a;
+    --accent: #19c2d8;
+    --error: #ff4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Ioskeley Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 17px;
+    min-height: 100vh;
+  }
+  main {
+    width: min(680px, 90vw);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .brand { display: flex; justify-content: center; transform: translateY(-0.4rem); }
+  .logo { width: 48px; height: auto; opacity: 0.95; }
+  .input-wrap { position: relative; }
+  form { display: flex; border: 1px solid var(--line); }
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+    background: none;
+    border: 0;
+    color: var(--fg);
+    font: inherit;
+    outline: none;
+  }
+  button {
+    background: none;
+    border: 0;
+    color: var(--accent);
+    font: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+  form button {
+    padding: 0 0.65rem;
+    border-left: 1px solid var(--line);
+  }
+  #add { color: var(--fg); }
+  #download { width: 6.75rem; }
+  #clearText {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: calc(100% + 0.05rem);
+    border: 0;
+    color: var(--dim);
+    font-size: 1rem;
+    min-width: 1rem;
+    padding: 0;
+  }
+  #download.ready { background: var(--accent); color: #000; }
+  button:disabled { color: var(--dim); cursor: not-allowed; }
+  .row-controls {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+  .download-one,
+  .remove-job {
+    flex: 0 0 1.35rem;
+    width: 1.35rem;
+    height: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    color: var(--dim);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0;
+  }
+  .download-one:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+  .remove-job:not(:disabled):hover { border-color: var(--error); color: var(--error); }
+  .remove-job.cancel-active:not(:disabled):hover { border-color: var(--dim); color: var(--fg); }
+  .download-one:disabled,
+  .remove-job:disabled { border-color: var(--line); color: var(--dim); cursor: default; }
+  #cancel { color: var(--error); }
+  [hidden] { display: none !important; }
+  .status {
+    font-size: 0.7rem;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+    min-height: 1em;
+  }
+  .status:empty { display: none; }
+  .status.error { color: var(--error); }
+  .queue {
+    position: absolute;
+    top: calc(100% + 0.75rem);
+    left: 0;
+    right: 0;
+    max-height: calc(50vh - 1.25rem);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-right: 0.15rem;
+  }
+  .jobs { display: flex; flex-direction: column; gap: 0.2rem; }
+  .job {
+    border: 1px solid var(--line);
+    padding: 0.35rem 0.5rem;
+    display: grid;
+    gap: 0.25rem;
+  }
+  .job.complete { padding-block: 0.25rem; }
+  .job.complete .job-url { color: var(--dim); font-style: italic; opacity: 0.75; }
+  .job-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    width: 100%;
+  }
+  .job-title {
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+  .site-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin-top: 0.15rem;
+    color: var(--fg);
+    opacity: 0.9;
+  }
+  .site-icon svg { display: block; width: 100%; height: 100%; }
+  .job-url {
+    min-width: 0;
+    width: 100%;
+    color: var(--fg);
+    font-size: 0.95rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .job-state {
+    color: var(--dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+  }
+  .job-state.error { color: var(--error); }
+  .bar { height: 2px; background: var(--line); overflow: hidden; }
+  .bar div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+  .list-actions { display: flex; justify-content: flex-end; gap: 0.8rem; }
+  .list-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+    padding-top: 0.25rem;
+  }
+  @media (max-width: 620px) {
+    form { flex-wrap: wrap; }
+    input { flex-basis: 100%; border-bottom: 1px solid var(--line); }
+    form button { flex: 1; padding: 0.55rem 0; }
+    .job-top { align-items: flex-start; flex-direction: column; gap: 0.35rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><img class="logo" src="/logo.png" alt=""></div>
+  <div class="input-wrap">
+    <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled>×</button>
+    <form id="form">
+      <input id="url" type="text" autofocus spellcheck="false">
+      <button id="add" type="button" hidden disabled>add</button>
+      <button id="download" type="submit" disabled>download</button>
+    </form>
+  </div>
+  <p id="status" class="status"></p>
+  <div class="queue">
+    <div id="jobs" class="jobs"></div>
+    <div class="list-actions">
+      <button id="cancel" type="button" hidden>cancel</button>
+      <button id="clear" type="button" hidden>clear</button>
+    </div>
+  </div>
+</main>
+<script>
+  const MAX_ACTIVE_JOBS = 7;
+  const DOUBLE_BACKSPACE_MS = 300;
+  const form = document.getElementById('form');
+  const urlInput = document.getElementById('url');
+  const addButton = document.getElementById('add');
+  const clearTextButton = document.getElementById('clearText');
+  const downloadButton = document.getElementById('download');
+  const cancelButton = document.getElementById('cancel');
+  const clearButton = document.getElementById('clear');
+  const jobsList = document.getElementById('jobs');
+  const statusLine = document.getElementById('status');
+
+  let nextLocalId = 1;
+  let groupRunning = false;
+  let lastBackspaceAt = 0;
+  const items = [];
+
+  function setStatus(text, isError = false) {
+    statusLine.textContent = text;
+    statusLine.classList.toggle('error', isError);
+  }
+
+  function isActive(item) {
+    return item.status === 'starting' || item.status === 'downloading' || item.status === 'processing';
+  }
+
+  function activeCount() {
+    return items.filter(isActive).length;
+  }
+
+  function queuedCount() {
+    return items.filter((item) => item.status === 'queued').length;
+  }
+
+  function restartableCount() {
+    return items.filter((item) => item.status === 'canceled').length;
+  }
+
+  function toggleButton(button, show) {
+    button.hidden = !show;
+    button.disabled = !show;
+  }
+
+  function updateControls() {
+    const hasInput = urlInput.value.trim().length > 0;
+    const hasQueuedOrCanceled = queuedCount() > 0 || restartableCount() > 0;
+    const active = activeCount();
+
+    toggleButton(addButton, hasInput);
+    toggleButton(clearTextButton, hasInput);
+    toggleButton(cancelButton, active > 0);
+    toggleButton(clearButton, items.length > 0);
+
+    downloadButton.disabled = !hasInput && !hasQueuedOrCanceled;
+    downloadButton.classList.toggle('ready', !downloadButton.disabled);
+  }
+
+  function progressWidth(item) {
+    if (item.status === 'saving' || item.status === 'processing') return '100%';
+    if (item.status === 'starting') return '5%';
+    if (item.status === 'downloading') return (item.percent ?? 0) + '%';
+    return '0';
+  }
+
+  function sourceName(source) {
+    if (source === 'youtube') return 'YouTube';
+    if (source === 'tiktok') return 'TikTok';
+    if (source === 'instagram') return 'Instagram';
+    if (source === 'x') return 'X';
+    return 'site';
+  }
+
+  function matchesHost(host, root) {
+    return host === root || host.endsWith('.' + root);
+  }
+
+  function sourceForUrl(url) {
+    let host;
+    try {
+      host = new URL(url).hostname.toLowerCase();
+    } catch {
+      return 'generic';
+    }
+    if (host === 'youtu.be' || matchesHost(host, 'youtube.com')) return 'youtube';
+    if (matchesHost(host, 'tiktok.com')) return 'tiktok';
+    if (matchesHost(host, 'instagram.com')) return 'instagram';
+    if (matchesHost(host, 'twitter.com') || matchesHost(host, 'x.com')) return 'x';
+    return 'generic';
+  }
+
+  function makeSvg(viewBox, paths) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', viewBox);
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    for (const path of paths) {
+      const node = document.createElementNS('http://www.w3.org/2000/svg', path.tag || 'path');
+      for (const [name, value] of Object.entries(path.attrs)) node.setAttribute(name, value);
+      svg.append(node);
+    }
+    return svg;
+  }
+
+  function iconForSource(source) {
+    if (source === 'youtube') {
+      return makeSvg('0 0 24 24', [
+        { tag: 'rect', attrs: { x: '2', y: '6', width: '20', height: '12', rx: '3', fill: 'currentColor' } },
+        { attrs: { d: 'M10 9.25v5.5L15 12z', fill: '#000' } },
+      ]);
+    }
+    if (source === 'instagram') {
+      return makeSvg('0 0 24 24', [
+        { tag: 'rect', attrs: { x: '4', y: '4', width: '16', height: '16', rx: '5', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' } },
+        { tag: 'circle', attrs: { cx: '12', cy: '12', r: '3.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' } },
+        { tag: 'circle', attrs: { cx: '16.8', cy: '7.2', r: '1.1', fill: 'currentColor' } },
+      ]);
+    }
+    if (source === 'x') {
+      return makeSvg('0 0 24 24', [
+        { attrs: { d: 'M14.2 10.2 22 1h-1.9l-6.8 7.9L7.9 1H2l8.2 12L2 23h1.9l7.1-8.3 5.7 8.3H22zm-2.5 2.9-.8-1.2L4.3 2.4H7l5.3 7.6.8 1.2 6.9 9.9h-2.7z', fill: 'currentColor' } },
+      ]);
+    }
+    if (source === 'tiktok') {
+      return makeSvg('0 0 24 24', [
+        { attrs: { d: 'M16.1 2c.4 3 2.1 4.8 5 5v3.3a8.2 8.2 0 0 1-5-1.6v7.4c0 3.6-2.5 5.9-6.1 5.9A5.8 5.8 0 0 1 4 16.2c0-3.7 3-6.4 6.7-5.8v3.5c-1.7-.5-3.2.6-3.2 2.3 0 1.4 1.1 2.4 2.5 2.4 1.6 0 2.5-1 2.5-2.8V2z', fill: 'currentColor' } },
+      ]);
+    }
+    return makeSvg('0 0 24 24', [
+      { tag: 'circle', attrs: { cx: '12', cy: '12', r: '8', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' } },
+    ]);
+  }
+
+  function formatBytes(bytes) {
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return null;
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    const digits = value >= 10 || unit === 0 ? 0 : 1;
+    return value.toFixed(digits) + ' ' + units[unit];
+  }
+
+  function statusText(item) {
+    if (item.status === 'downloading' && typeof item.percent === 'number') {
+      const downloaded = formatBytes(item.downloadedBytes);
+      const total = formatBytes(item.totalBytes);
+      const size = downloaded && total ? ' ' + downloaded + ' / ' + total : '';
+      return 'downloading ' + item.percent.toFixed(1) + '%' + size;
+    }
+    if (item.status === 'failed') return item.error || 'failed';
+    return item.status;
+  }
+
+  function displayTitle(item) {
+    if (item.title) return item.title;
+    if (item.titleLoading) return 'loading title';
+    return item.url;
+  }
+
+  function singleDownloadTitle(active) {
+    if (groupRunning) return 'group download active';
+    if (active >= MAX_ACTIVE_JOBS) return 'max active downloads';
+    return 'download this';
+  }
+
+  function canStartSingleDownload(item, active) {
+    return (
+      !groupRunning &&
+      active < MAX_ACTIVE_JOBS &&
+      (item.status === 'queued' || item.status === 'canceled')
+    );
+  }
+
+  function render() {
+    const active = activeCount();
+    const nodes = items.map((item) => {
+      const row = document.createElement('section');
+      row.className = 'job';
+      row.classList.toggle('complete', item.status === 'complete');
+
+      const top = document.createElement('div');
+      top.className = 'job-top';
+
+      const title = document.createElement('div');
+      title.className = 'job-title';
+
+      const source = sourceForUrl(item.url);
+      const icon = document.createElement('span');
+      icon.className = 'site-icon';
+      icon.title = sourceName(source);
+      icon.setAttribute('aria-label', sourceName(source));
+      icon.append(iconForSource(source));
+
+      const url = document.createElement('p');
+      url.className = 'job-url';
+      url.title = item.url;
+      url.textContent = displayTitle(item);
+
+      title.append(icon, url);
+
+      const controls = document.createElement('div');
+      controls.className = 'row-controls';
+
+      const downloadOne = document.createElement('button');
+      downloadOne.type = 'button';
+      downloadOne.className = 'download-one';
+      downloadOne.textContent = '↓';
+      downloadOne.title = singleDownloadTitle(active);
+      downloadOne.disabled = !canStartSingleDownload(item, active);
+      downloadOne.setAttribute('aria-label', 'download this video');
+      downloadOne.addEventListener('click', () => startSingleItem(item));
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'remove-job';
+      remove.classList.toggle('cancel-active', isActive(item));
+      remove.textContent = '×';
+      remove.title = isActive(item) ? 'cancel this download' : 'remove';
+      remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued video');
+      remove.addEventListener('click', () => removeItem(item));
+
+      controls.append(downloadOne, remove);
+      top.append(title, controls);
+
+      row.append(top);
+
+      if (item.status !== 'queued' && item.status !== 'complete') {
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        const fill = document.createElement('div');
+        fill.style.width = progressWidth(item);
+        bar.append(fill);
+
+        const state = document.createElement('p');
+        state.className = 'job-state';
+        state.classList.toggle('error', item.status === 'failed');
+        state.textContent = statusText(item);
+
+        row.append(bar, state);
+      }
+
+      return row;
+    });
+    jobsList.replaceChildren(...nodes);
+    updateControls();
+  }
+
+  function queueItem(url, selectedFormat = 'mp4', initialTitle = null) {
+    const item = {
+      localId: nextLocalId,
+      url,
+      title: initialTitle,
+      titleLoading: !initialTitle,
+      format: selectedFormat,
+      status: 'queued',
+      percent: null,
+      downloadedBytes: null,
+      totalBytes: null,
+      error: null,
+      jobId: null,
+      source: null,
+    };
+    nextLocalId += 1;
+    items.push(item);
+    if (!initialTitle) void loadTitle(item);
+    render();
+    return item;
+  }
+
+  async function loadTitle(item) {
+    try {
+      const response = await fetch('/api/metadata', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: item.url }),
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {}
+      if (!items.includes(item)) return;
+      if (response.ok && data.title) item.title = data.title;
+    } catch {
+    } finally {
+      if (items.includes(item)) {
+        item.titleLoading = false;
+        render();
+      }
+    }
+  }
+
+  function queueInput() {
+    const urls = urlInput.value.trim().split(/\s+/).filter(Boolean);
+    if (urls.length === 0) return;
+    for (const url of urls) queueItem(url);
+    urlInput.value = '';
+    setStatus('');
+    render();
+  }
+
+  function downloadFile(item) {
+    if (!item.jobId) return;
+    const link = document.createElement('a');
+    link.href = '/api/jobs/' + item.jobId + '/file';
+    link.download = '';
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+
+  function finishItem(item, status, message = null) {
+    if (item.source) item.source.close();
+    item.source = null;
+    item.status = status;
+    item.error = message;
+
+    if (groupRunning) {
+      runQueue();
+    } else {
+      render();
+    }
+  }
+
+  async function startItem(item) {
+    if (item.status !== 'queued') return;
+    item.status = 'starting';
+    render();
+
+    let data;
+    try {
+      const response = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: item.url, format: item.format }),
+      });
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
+      if (!response.ok) {
+        finishItem(item, 'failed', data.error || 'could not start download');
+        return;
+      }
+    } catch {
+      finishItem(item, 'failed', 'could not reach server');
+      return;
+    }
+
+    item.jobId = data.jobId;
+    if (item.status === 'canceled') {
+      await cancelServerJob(item);
+      render();
+      if (groupRunning) runQueue();
+      return;
+    }
+
+    const source = new EventSource('/api/jobs/' + item.jobId + '/events');
+    item.source = source;
+
+    source.addEventListener('progress', (event) => {
+      let progress;
+      try {
+        progress = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (progress.stage === 'downloading') {
+        item.status = 'downloading';
+        item.percent = progress.percent;
+        item.downloadedBytes = progress.downloadedBytes;
+        item.totalBytes = progress.totalBytes;
+      } else {
+        item.status = 'processing';
+      }
+      render();
+    });
+
+    source.addEventListener('done', () => {
+      source.close();
+      item.source = null;
+      item.status = 'saving';
+      render();
+      downloadFile(item);
+      window.setTimeout(() => finishItem(item, 'complete'), 700);
+    });
+
+    source.addEventListener('failed', (event) => {
+      finishItem(item, 'failed', event.data || 'failed');
+    });
+
+    source.addEventListener('canceled', () => {
+      finishItem(item, 'canceled');
+    });
+
+    source.onerror = () => {
+      if (isActive(item)) finishItem(item, 'failed', 'lost connection to server');
+    };
+  }
+
+  function resetForQueue(item) {
+    item.status = 'queued';
+    item.percent = null;
+    item.downloadedBytes = null;
+    item.totalBytes = null;
+    item.error = null;
+    item.jobId = null;
+    item.source = null;
+  }
+
+  function reactivateCanceledItems() {
+    for (const item of items) {
+      if (item.status === 'canceled') resetForQueue(item);
+    }
+  }
+
+  function startSingleItem(item) {
+    if (groupRunning || activeCount() >= MAX_ACTIVE_JOBS) return;
+    if (item.status === 'canceled') resetForQueue(item);
+    if (item.status !== 'queued') return;
+    groupRunning = false;
+    void startItem(item);
+  }
+
+  function runQueue() {
+    while (activeCount() < MAX_ACTIVE_JOBS) {
+      const item = items.find((candidate) => candidate.status === 'queued');
+      if (!item) break;
+      void startItem(item);
+    }
+    if (queuedCount() === 0 && activeCount() === 0) {
+      groupRunning = false;
+    }
+    setStatus('');
+    render();
+  }
+
+  async function cancelServerJob(item) {
+    if (!item.jobId) return;
+    try {
+      await fetch('/api/jobs/' + item.jobId, { method: 'DELETE' });
+    } catch {}
+  }
+
+  function removeItem(item) {
+    if (isActive(item)) {
+      item.status = 'canceled';
+      if (item.source) item.source.close();
+      render();
+      void cancelServerJob(item).finally(() => {
+        if (groupRunning) runQueue();
+      });
+      return;
+    }
+
+    item.status = 'canceled';
+    if (item.source) item.source.close();
+    const index = items.indexOf(item);
+    if (index !== -1) items.splice(index, 1);
+    render();
+    void cancelServerJob(item);
+  }
+
+  function cancelAllDownloads() {
+    groupRunning = false;
+    const cancelRequests = [];
+    for (const item of items) {
+      if (item.status === 'queued' || isActive(item)) {
+        item.status = 'canceled';
+        if (item.source) item.source.close();
+        if (item.jobId) cancelRequests.push(cancelServerJob(item));
+      }
+    }
+    setStatus('canceled');
+    render();
+    return Promise.all(cancelRequests);
+  }
+
+  cancelButton.addEventListener('click', () => {
+    void cancelAllDownloads();
+  });
+
+  clearButton.addEventListener('click', async () => {
+    await cancelAllDownloads();
+    items.length = 0;
+    setStatus('');
+    render();
+  });
+
+  addButton.addEventListener('click', () => {
+    queueInput();
+  });
+
+  clearTextButton.addEventListener('click', () => {
+    urlInput.value = '';
+    updateControls();
+    urlInput.focus();
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    queueInput();
+    reactivateCanceledItems();
+    groupRunning = true;
+    runQueue();
+  });
+
+  urlInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Backspace' && urlInput.value.length > 0) {
+      const now = Date.now();
+      if (event.repeat || now - lastBackspaceAt < DOUBLE_BACKSPACE_MS) {
+        event.preventDefault();
+        urlInput.value = '';
+        lastBackspaceAt = 0;
+        updateControls();
+        return;
+      }
+      lastBackspaceAt = now;
+      return;
+    }
+
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    queueInput();
+  });
+
+  urlInput.addEventListener('input', updateControls);
+  render();
+</script>
+</body>
+</html>
