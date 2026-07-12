@@ -1,3 +1,5 @@
+<img width="1895" height="1141" alt="image" src="https://github.com/user-attachments/assets/b14ad3b0-5ccc-44ab-a85a-d0390a498fb8" />
+
 - Node >= 20 and pnpm
 - `yt-dlp` and `ffmpeg` on PATH
 
