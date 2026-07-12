@@ -1,5 +1,10 @@
 <img width="1144" height="282" alt="dom" src="https://github.com/user-attachments/assets/dc6de67c-4faa-4895-8dd8-22cb39b09f39" />
 
+Personal, local-only downloader for public videos from YouTube, Twitter/X,
+Instagram, TikTok, and Reddit. There is no login or cookie support, so gated
+content may fail with the extractor's error message.
+
+## Requirements
 
 - Node >= 20 and pnpm
 - `yt-dlp` and `ffmpeg` on PATH
@@ -7,43 +12,50 @@
 ```bash
 # macOS
 brew install yt-dlp ffmpeg
+
 # Debian/Ubuntu
 sudo apt install yt-dlp ffmpeg
 ```
 
-if downloads start failing with extraction errors update yt-dlp first
-(`yt-dlp -U` or your package manager)
+If downloads start failing with extraction errors, update yt-dlp first
+(`yt-dlp -U` or your package manager). Supported sites change their media
+delivery regularly, so keeping yt-dlp current is the first troubleshooting
+step.
 
-
+## Run
 
 ```bash
 pnpm install
 pnpm start
 ```
 
-open http://127.0.0.1:3000. Run from the repo root (the static page is
-served from `./public`). The server binds to 127.0.0.1 only.
+Open http://127.0.0.1:3000 in your browser. Run the commands from the repo
+root because the static page is served from `./public`. The server binds to
+127.0.0.1 only.
 
-macOS/Linux there is also an optional helper script:
+On macOS and Linux, there is also an optional helper script:
 
 ```bash
 ./scripts/start-local.sh
 ```
+
 ## Windows
 
-WSL is the recommended setup
+WSL is the recommended setup.
+
+In PowerShell:
 
 ```powershell
 wsl --install -d Ubuntu
 ```
 
-restart if Windows asks you to open Ubuntu then run
+Restart if Windows asks you to, open Ubuntu, then run:
 
 ```bash
 sudo apt update
 sudo apt install -y git curl ffmpeg yt-dlp
 
-# Install Node. Node 22 LTS is fine
+# Install Node. Node 22 LTS is fine.
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 corepack enable
@@ -54,10 +66,10 @@ pnpm install
 pnpm start
 ```
 
-open http://127.0.0.1:3000 in your browser
+Open http://127.0.0.1:3000 in your browser.
 
-Windows can also work if `node`, `pnpm`, `yt-dlp`, and `ffmpeg` are all
-on PATH. one PowerShell setup path is
+Native Windows can also work if `node`, `pnpm`, `yt-dlp`, and `ffmpeg` are all
+on PATH. One PowerShell setup path is:
 
 ```powershell
 winget install -e --id OpenJS.NodeJS.LTS
@@ -71,4 +83,5 @@ pnpm install
 pnpm start
 ```
 
-if PowerShell cannot find `yt-dlp` or `ffmpeg` after installing them close try again
+If PowerShell cannot find `yt-dlp` or `ffmpeg` after installing them, close and
+reopen PowerShell before trying again.

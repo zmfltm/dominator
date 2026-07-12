@@ -25,10 +25,11 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 - `public/index.html`: entire frontend. No build step, no frontend framework.
 - `public/logo.png`: tiny centered logo, cropped from the user-provided screenshot.
 - `public/fonts/`: vendored Ioskeley Mono web font and license.
-- `src/validate.ts`: request and supported-host validation.
+- `src/validate.ts`: request and supported-host validation, including Reddit.
 - `src/progress.ts`: yt-dlp progress parser.
-- `src/metadata.ts`: title lookup via yt-dlp `--skip-download --print title`.
-- `src/jobs.ts`: in-memory job map, yt-dlp subprocess lifecycle, cancellation, stale reaping, max 7 active jobs.
+- `src/metadata.ts`: title, duration, clip, and thumbnail lookup via yt-dlp `--skip-download --print ...`.
+- `src/previews.ts`: low-resolution preview download and ffmpeg filmstrip sprite generation, max 2 active previews.
+- `src/jobs.ts`: in-memory job map, yt-dlp subprocess lifecycle, local ffmpeg clipping, cancellation, stale reaping, max 7 active jobs.
 - `src/app.ts`: Hono routes for creating jobs, SSE events, cancellation, and file delivery.
 - `src/server.ts`: binary checks, temp sweep, stale reaper interval, local bind.
 
@@ -42,12 +43,12 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 - Running rows should show percent plus downloaded and total size when yt-dlp reports a total.
 - The download button is visible by default, turns active-colored when usable, and is enabled when the input has a URL or queued rows exist.
 - Pressing Enter in the input queues URLs only; clicking download starts the queue.
-- The add button and an outside-left borderless text clear icon are visible only while the URL input has text. Add uses a neutral color so it is distinct from download.
+- The add button, clip button, and an outside-left borderless text clear icon are visible only while the URL input has text. Add uses a neutral color so it is distinct from download. The input-level clip button opens start/end fields, a taller draggable zoomable timeline, preview/reset/clip buttons, and a preview player for URLs queued from the current input. Links with `t`, `start`, `end`, or media fragment times should prefill clip fields when possible. Timelines should build sampled filmstrip previews when available, use fetched thumbnails as the fallback background, and gray out unselected regions.
 - Holding Backspace in the URL input or double-tapping Backspace clears all input text.
 - Each row has a wide enough x button to remove that row before it starts. Started rows disable the x button and it must not turn red on hover.
 - A cancel button appears below the list while downloads are active and cancels active plus queued downloads.
 - After cancellation, the download button should reactivate and retry canceled rows when clicked.
-- Each queued or canceled row has compact boxed controls: a down-arrow button to start just that row and an x button to remove it. Active rows reuse the x button to cancel only that row without canceling other active downloads. Disable row download arrows during group downloads or when max active jobs are already running, but allow multiple single-row downloads up to the max.
+- Each queued, canceled, or invalid row has compact boxed controls: a clip button to reveal optional start/end clip fields plus a taller draggable zoomable timeline, preview/reset/clip buttons, a down-arrow button to start just that row, and an x button to remove it. Timelines should build sampled filmstrip previews when available, use fetched thumbnails as the fallback background, and gray out unselected regions. The preview button plays the selected range from the low-resolution preview source, and adjusting times while preview is open reloads and plays the updated range. Active rows reuse the x button to cancel only that row without canceling other active downloads. Disable row download arrows during group downloads or when max active jobs are already running, but allow multiple single-row downloads up to the max.
 - Starting one row must not auto-start the rest of the queue when that row finishes.
 - A clear button appears below the list when rows exist. Clearing also cancels active jobs.
 - The download button has a fixed width so it does not resize when it turns active-colored.

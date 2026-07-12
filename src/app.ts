@@ -3,10 +3,16 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { cancelJob, deleteJob, getJob, JobLimitError, startJob, type Job } from './jobs';
-import { fetchVideoTitle, MetadataError } from './metadata';
+import { fetchVideoMetadata, MetadataError } from './metadata';
+import {
+  getPreview,
+  previewStatusBody,
+  PreviewLimitError,
+  startPreview,
+} from './previews';
 import type { ProgressEvent } from './progress';
 import { parseJobRequest } from './validate';
 
@@ -30,8 +36,8 @@ app.post('/api/metadata', async (c) => {
     return c.json({ error: parsed.error }, 400);
   }
   try {
-    const title = await fetchVideoTitle(parsed.value.url);
-    return c.json({ title });
+    const metadata = await fetchVideoMetadata(parsed.value.url);
+    return c.json(metadata);
   } catch (err) {
     if (err instanceof MetadataError) {
       return c.json({ error: err.message }, 502);
@@ -39,6 +45,150 @@ app.post('/api/metadata', async (c) => {
     throw err;
   }
 });
+
+app.post('/api/previews', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'request body must be JSON' }, 400);
+  }
+  if (typeof body !== 'object' || body === null) {
+    return c.json({ error: 'request body must be a JSON object' }, 400);
+  }
+  const parsed = parseJobRequest({
+    url: (body as Record<string, unknown>).url,
+    format: 'mp4',
+  });
+  if (!parsed.ok) {
+    return c.json({ error: parsed.error }, 400);
+  }
+  try {
+    const preview = await startPreview(parsed.value.url);
+    return c.json(previewStatusBody(preview), preview.status === 'done' ? 200 : 202);
+  } catch (err) {
+    if (err instanceof PreviewLimitError) {
+      return c.json({ error: err.message }, 429);
+    }
+    throw err;
+  }
+});
+
+app.get('/api/previews/:id', (c) => {
+  const preview = getPreview(c.req.param('id'));
+  if (!preview) {
+    return c.json({ error: 'no such preview' }, 404);
+  }
+  return c.json(previewStatusBody(preview));
+});
+
+app.get('/api/previews/:id/source', async (c) => {
+  const preview = getPreview(c.req.param('id'));
+  if (!preview) {
+    return c.json({ error: 'no such preview' }, 404);
+  }
+  if (preview.status !== 'done' || !preview.sourcePath) {
+    return c.json({ error: 'preview is not ready' }, 409);
+  }
+  let size: number;
+  try {
+    ({ size } = await stat(preview.sourcePath));
+  } catch {
+    return c.json({ error: 'preview no longer available' }, 410);
+  }
+  const range = parseRange(c.req.header('range'), size);
+  if (range === 'invalid') {
+    return new Response(null, {
+      status: 416,
+      headers: { 'Content-Range': `bytes */${size}` },
+    });
+  }
+  const headers: Record<string, string> = {
+    'Content-Type': videoContentType(preview.sourcePath),
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=3600',
+  };
+  const streamOptions: { start?: number; end?: number } = {};
+  let status = 200;
+  if (range) {
+    status = 206;
+    streamOptions.start = range.start;
+    streamOptions.end = range.end;
+    headers['Content-Range'] = `bytes ${range.start}-${range.end}/${size}`;
+    headers['Content-Length'] = String(range.end - range.start + 1);
+  } else {
+    headers['Content-Length'] = String(size);
+  }
+  const fileStream = createReadStream(preview.sourcePath, streamOptions);
+  fileStream.once('error', (err) => {
+    console.error(`preview source stream error for preview ${preview.id}:`, err);
+    fileStream.destroy();
+  });
+  return new Response(Readable.toWeb(fileStream) as ReadableStream, { status, headers });
+});
+
+app.get('/api/previews/:id/sprite', async (c) => {
+  const preview = getPreview(c.req.param('id'));
+  if (!preview) {
+    return c.json({ error: 'no such preview' }, 404);
+  }
+  if (preview.status !== 'done' || !preview.spritePath) {
+    return c.json({ error: 'preview is not ready' }, 409);
+  }
+  let size: number;
+  try {
+    ({ size } = await stat(preview.spritePath));
+  } catch {
+    return c.json({ error: 'preview no longer available' }, 410);
+  }
+  const fileStream = createReadStream(preview.spritePath);
+  fileStream.once('error', (err) => {
+    console.error(`preview stream error for preview ${preview.id}:`, err);
+    fileStream.destroy();
+  });
+  return new Response(Readable.toWeb(fileStream) as ReadableStream, {
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(size),
+      'Cache-Control': 'private, max-age=3600',
+    },
+  });
+});
+
+type ByteRange = { start: number; end: number };
+
+function parseRange(header: string | undefined, size: number): ByteRange | 'invalid' | null {
+  if (!header) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match) return 'invalid';
+  const [, startText, endText] = match;
+  if (!startText && !endText) return 'invalid';
+
+  let start: number;
+  let end: number;
+  if (!startText) {
+    const suffixLength = Number(endText);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return 'invalid';
+    start = Math.max(0, size - suffixLength);
+    end = size - 1;
+  } else {
+    start = Number(startText);
+    end = endText ? Number(endText) : size - 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return 'invalid';
+  }
+
+  if (start < 0 || end < start || start >= size) return 'invalid';
+  return { start, end: Math.min(end, size - 1) };
+}
+
+function videoContentType(filePath: string): string {
+  const extension = extname(filePath).toLowerCase();
+  if (extension === '.mp4' || extension === '.m4v') return 'video/mp4';
+  if (extension === '.webm') return 'video/webm';
+  if (extension === '.mov') return 'video/quicktime';
+  if (extension === '.mkv') return 'video/x-matroska';
+  return 'application/octet-stream';
+}
 
 app.post('/api/jobs', async (c) => {
   let body: unknown;

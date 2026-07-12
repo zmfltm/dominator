@@ -1,9 +1,9 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
 import type { Readable } from 'node:stream';
 import { parseProgressLine, type ProgressEvent } from './progress';
 import type { JobRequest } from './validate';
@@ -44,6 +44,133 @@ const FORMAT_ARGS: Record<JobRequest['format'], string[]> = {
   mp4: ['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b'],
   mp3: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
 };
+
+type Clip = NonNullable<JobRequest['clip']>;
+
+export function formatClipTimestamp(seconds: number): string {
+  let wholeSeconds = Math.floor(seconds);
+  let milliseconds = Math.round((seconds - wholeSeconds) * 1000);
+  if (milliseconds === 1000) {
+    wholeSeconds += 1;
+    milliseconds = 0;
+  }
+
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const secs = wholeSeconds % 60;
+  const base = [hours, minutes, secs]
+    .map((part) => String(part).padStart(2, '0'))
+    .join(':');
+
+  if (milliseconds === 0) return base;
+  const fraction = String(milliseconds).padStart(3, '0').replace(/0+$/, '');
+  return `${base}.${fraction}`;
+}
+
+export function clipOutputPath(inputPath: string, format: JobRequest['format']): string {
+  const parsed = parse(inputPath);
+  return join(parsed.dir, `${parsed.name}.clip.${format}`);
+}
+
+export function buildFfmpegCopyClipArgs(
+  inputPath: string,
+  outputPath: string,
+  clip: Clip,
+  format: JobRequest['format'],
+): string[] {
+  return [
+    ...ffmpegBaseClipArgs(inputPath, clip),
+    ...ffmpegCopyOutputArgs(format),
+    outputPath,
+  ];
+}
+
+export function buildFfmpegReencodeClipArgs(
+  inputPath: string,
+  outputPath: string,
+  clip: Clip,
+  format: JobRequest['format'],
+): string[] {
+  return [
+    ...ffmpegBaseClipArgs(inputPath, clip),
+    ...ffmpegReencodeOutputArgs(format),
+    outputPath,
+  ];
+}
+
+export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
+  return [
+    ...FORMAT_ARGS[request.format],
+    '--no-playlist',
+    '--progress',
+    '--newline',
+    '-o',
+    join(dir, '%(title)s.%(ext)s'),
+    '--',
+    request.url,
+  ];
+}
+
+function ffmpegBaseClipArgs(inputPath: string, clip: Clip): string[] {
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'warning',
+    '-y',
+    '-ss',
+    formatClipTimestamp(clip.start),
+    '-i',
+    inputPath,
+    '-t',
+    formatClipTimestamp(clip.end - clip.start),
+  ];
+}
+
+function ffmpegCopyOutputArgs(format: JobRequest['format']): string[] {
+  if (format === 'mp3') {
+    return ['-vn', '-map', '0:a:0?', '-c', 'copy'];
+  }
+  return [
+    '-map',
+    '0:v:0?',
+    '-map',
+    '0:a?',
+    '-sn',
+    '-dn',
+    '-c',
+    'copy',
+    '-avoid_negative_ts',
+    'make_zero',
+    '-movflags',
+    '+faststart',
+  ];
+}
+
+function ffmpegReencodeOutputArgs(format: JobRequest['format']): string[] {
+  if (format === 'mp3') {
+    return ['-vn', '-map', '0:a:0?', '-c:a', 'libmp3lame', '-q:a', '2'];
+  }
+  return [
+    '-map',
+    '0:v:0?',
+    '-map',
+    '0:a:0?',
+    '-sn',
+    '-dn',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-crf',
+    '23',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '160k',
+    '-movflags',
+    '+faststart',
+  ];
+}
 
 export function getJob(id: string): Job | undefined {
   return jobs.get(id);
@@ -110,16 +237,7 @@ export async function startJob(request: JobRequest): Promise<Job> {
   jobs.set(job.id, job);
   startingJobs -= 1;
 
-  const args = [
-    ...FORMAT_ARGS[request.format],
-    '--no-playlist',
-    '--progress',
-    '--newline',
-    '-o',
-    join(dir, '%(title)s.%(ext)s'),
-    '--',
-    request.url,
-  ];
+  const args = buildYtDlpArgs(request, dir);
   let child: ChildProcessByStdio<null, Readable, Readable>;
   try {
     child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -161,23 +279,119 @@ export async function startJob(request: JobRequest): Promise<Job> {
       return;
     }
     try {
-      const files = await readdir(job.dir);
+      const filePath = await findDownloadedFile(job.dir);
       if (job.status !== 'running') return;
-      if (files.length === 0) {
+      if (!filePath) {
         failJob(job, 'yt-dlp finished but produced no file');
         return;
       }
-      job.filePath = join(job.dir, files[0]);
+      job.filePath = request.clip
+        ? await trimDownloadedFile(job, filePath, request.clip, request.format)
+        : filePath;
+      if (job.status !== 'running') return;
       job.status = 'done';
       job.completedAt = Date.now();
       job.events.emit('done');
     } catch (err) {
       if (job.status !== 'running') return;
-      failJob(job, `could not read output: ${(err as Error).message}`);
+      failJob(job, `could not prepare output: ${(err as Error).message}`);
     }
   });
 
   return job;
+}
+
+async function findDownloadedFile(dir: string): Promise<string | undefined> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((name) => (
+      !name.endsWith('.part') && !name.endsWith('.ytdl') && !name.endsWith('.temp')
+    ))
+    .sort();
+  return files[0] ? join(dir, files[0]) : undefined;
+}
+
+async function trimDownloadedFile(
+  job: Job,
+  inputPath: string,
+  clip: Clip,
+  format: JobRequest['format'],
+): Promise<string> {
+  emitProcessing(job);
+  const outputPath = clipOutputPath(inputPath, format);
+
+  const copyError = await runFfmpeg(
+    job,
+    buildFfmpegCopyClipArgs(inputPath, outputPath, clip, format),
+  );
+  if (job.status !== 'running') return outputPath;
+
+  if (copyError) {
+    const encodeError = await runFfmpeg(
+      job,
+      buildFfmpegReencodeClipArgs(inputPath, outputPath, clip, format),
+    );
+    if (job.status !== 'running') return outputPath;
+    if (encodeError) {
+      throw new Error(`ffmpeg could not clip file: ${encodeError}`);
+    }
+  }
+
+  const { size } = await stat(outputPath);
+  if (size === 0) {
+    throw new Error('ffmpeg finished but produced an empty clip');
+  }
+  await rm(inputPath, { force: true });
+  return outputPath;
+}
+
+function emitProcessing(job: Job): void {
+  const progress: ProgressEvent = { stage: 'processing' };
+  job.lastProgress = progress;
+  job.events.emit('progress', progress);
+}
+
+function runFfmpeg(job: Job, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      resolve(`failed to start ffmpeg: ${(err as Error).message}`);
+      return;
+    }
+
+    job.child = child;
+    let stderr = '';
+    let settled = false;
+    const settle = (message: string | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(message);
+    };
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-4000);
+    });
+
+    child.on('error', (err) => {
+      settle(`failed to start ffmpeg: ${err.message}`);
+    });
+
+    child.on('close', (code, signal) => {
+      if (job.status !== 'running') {
+        settle(null);
+        return;
+      }
+      if (code === 0) {
+        settle(null);
+        return;
+      }
+      settle(extractFfmpegError(stderr) ?? ffmpegExitMessage(code, signal));
+    });
+  });
 }
 
 export async function deleteJob(id: string): Promise<void> {
@@ -221,6 +435,24 @@ export function isStale(
 export async function reapStaleJobs(ttlMs = JOB_TTL_MS, now = Date.now()): Promise<void> {
   const stale = [...jobs.values()].filter((job) => isStale(job, ttlMs, now));
   await Promise.all(stale.map((job) => deleteJob(job.id)));
+}
+
+function extractFfmpegError(stderr: string): string | undefined {
+  return stderr
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .findLast((line) => /\b(error|failed|invalid)\b/i.test(line));
+}
+
+function ffmpegExitMessage(code: number | null, signal: NodeJS.Signals | null): string {
+  if (typeof code === 'number' && code < 0) {
+    return `ffmpeg crashed while clipping (signal ${Math.abs(code)})`;
+  }
+  if (signal) {
+    return `ffmpeg crashed while clipping (${signal})`;
+  }
+  return `ffmpeg exited with code ${code}`;
 }
 
 function extractError(stderr: string): string | undefined {

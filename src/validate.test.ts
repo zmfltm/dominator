@@ -72,11 +72,59 @@ describe('parseJobRequest', () => {
     expect(result2.ok).toBe(true);
   });
 
+  it('accepts Reddit URLs', () => {
+    const result1 = parseJobRequest({
+      url: 'https://www.reddit.com/r/videos/comments/abc123/example/',
+      format: 'mp4',
+    });
+    expect(result1.ok).toBe(true);
+
+    const result2 = parseJobRequest({
+      url: 'https://redd.it/abc123',
+      format: 'mp3',
+    });
+    expect(result2.ok).toBe(true);
+
+    const result3 = parseJobRequest({
+      url: 'https://v.redd.it/abc123/DASH_720.mp4',
+      format: 'mp4',
+    });
+    expect(result3.ok).toBe(true);
+  });
+
+  it('accepts a valid clip range', () => {
+    const result = parseJobRequest({
+      url: 'https://youtu.be/dQw4w9WgXcQ',
+      format: 'mp4',
+      clip: { start: 80, end: 105.5 },
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        url: 'https://youtu.be/dQw4w9WgXcQ',
+        format: 'mp4',
+        clip: { start: 80, end: 105.5 },
+      },
+    });
+  });
+
+  it('rejects invalid clip ranges', () => {
+    expect(
+      parseJobRequest({ url: 'https://youtu.be/x', format: 'mp4', clip: { start: 10 } }).ok,
+    ).toBe(false);
+    expect(
+      parseJobRequest({ url: 'https://youtu.be/x', format: 'mp4', clip: { start: 10, end: 10 } }),
+    ).toEqual({ ok: false, error: 'clip end must be after start' });
+    expect(
+      parseJobRequest({ url: 'https://youtu.be/x', format: 'mp4', clip: { start: -1, end: 10 } }),
+    ).toEqual({ ok: false, error: 'clip times must be between 0 and 24 hours' });
+  });
+
   it('rejects unsupported hosts', () => {
     const result = parseJobRequest({ url: 'https://vimeo.com/12345', format: 'mp4' });
     expect(result).toEqual({
       ok: false,
-      error: 'only YouTube, Twitter/X, Instagram, and TikTok URLs are supported',
+      error: 'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
     });
   });
 
@@ -92,6 +140,12 @@ describe('parseJobRequest', () => {
       format: 'mp4',
     });
     expect(result2.ok).toBe(false);
+
+    const result3 = parseJobRequest({
+      url: 'https://reddit.com.evil.example/r/videos',
+      format: 'mp4',
+    });
+    expect(result3.ok).toBe(false);
   });
 
   it('rejects non-http(s) schemes', () => {

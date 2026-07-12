@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { spawnSync } from 'node:child_process';
 import { app } from './app';
 import { reapStaleJobs, sweepLeftoverDirs } from './jobs';
+import { reapStalePreviews } from './previews';
 
 function checkBinary(name: string, versionArgs: string[]): void {
   const result = spawnSync(name, versionArgs, { stdio: 'ignore' });
@@ -25,6 +26,7 @@ await sweepLeftoverDirs();
 const REAP_INTERVAL_MS = 10 * 60 * 1000;
 setInterval(() => {
   reapStaleJobs().catch((err) => console.error('stale job reap failed:', err));
+  reapStalePreviews().catch((err) => console.error('stale preview reap failed:', err));
 }, REAP_INTERVAL_MS).unref();
 
 serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 3000 }, (info) => {

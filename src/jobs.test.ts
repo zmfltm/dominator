@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { isAtJobLimit, isStale, MAX_RUNNING_JOBS } from './jobs';
+import {
+  buildFfmpegCopyClipArgs,
+  buildFfmpegReencodeClipArgs,
+  buildYtDlpArgs,
+  clipOutputPath,
+  formatClipTimestamp,
+  isAtJobLimit,
+  isStale,
+  MAX_RUNNING_JOBS,
+} from './jobs';
 
 describe('isStale', () => {
   const now = 1_000_000;
@@ -37,5 +46,82 @@ describe('isAtJobLimit', () => {
 
   it('blocks work at the running job limit', () => {
     expect(isAtJobLimit(MAX_RUNNING_JOBS)).toBe(true);
+  });
+});
+
+describe('clip args', () => {
+  it('formats timestamps for ffmpeg clip arguments', () => {
+    expect(formatClipTimestamp(80)).toBe('00:01:20');
+    expect(formatClipTimestamp(3661.25)).toBe('01:01:01.25');
+  });
+
+  it('downloads the full file before local clipping', () => {
+    const url = 'https://youtu.be/dQw4w9WgXcQ';
+    const args = buildYtDlpArgs(
+      { url, format: 'mp4', clip: { start: 80, end: 105 } },
+      '/tmp/dominator-test',
+    );
+
+    expect(args).not.toContain('--download-sections');
+    expect(args).toContain('/tmp/dominator-test/%(title)s.%(ext)s');
+    expect(args.at(-2)).toBe('--');
+    expect(args.at(-1)).toBe(url);
+  });
+
+  it('builds stream-copy ffmpeg args for clipped MP4 output', () => {
+    expect(
+      buildFfmpegCopyClipArgs(
+        '/tmp/dominator-test/source.mp4',
+        '/tmp/dominator-test/source.clip.mp4',
+        { start: 80, end: 105.5 },
+        'mp4',
+      ),
+    ).toEqual([
+      '-hide_banner',
+      '-loglevel',
+      'warning',
+      '-y',
+      '-ss',
+      '00:01:20',
+      '-i',
+      '/tmp/dominator-test/source.mp4',
+      '-t',
+      '00:00:25.5',
+      '-map',
+      '0:v:0?',
+      '-map',
+      '0:a?',
+      '-sn',
+      '-dn',
+      '-c',
+      'copy',
+      '-avoid_negative_ts',
+      'make_zero',
+      '-movflags',
+      '+faststart',
+      '/tmp/dominator-test/source.clip.mp4',
+    ]);
+  });
+
+  it('builds re-encode ffmpeg args as a clipping fallback', () => {
+    const args = buildFfmpegReencodeClipArgs(
+      '/tmp/dominator-test/source.webm',
+      '/tmp/dominator-test/source.clip.mp4',
+      { start: 1, end: 3 },
+      'mp4',
+    );
+
+    expect(args).toContain('libx264');
+    expect(args).toContain('aac');
+    expect(args.at(-1)).toBe('/tmp/dominator-test/source.clip.mp4');
+  });
+
+  it('uses the requested final extension for local clips', () => {
+    expect(clipOutputPath('/tmp/dominator-test/source.webm', 'mp4')).toBe(
+      '/tmp/dominator-test/source.clip.mp4',
+    );
+    expect(clipOutputPath('/tmp/dominator-test/source.webm', 'mp3')).toBe(
+      '/tmp/dominator-test/source.clip.mp3',
+    );
   });
 });

@@ -116,6 +116,41 @@ added a cancel button for active plus queued downloads, added downloaded and
 total size next to running percentages when yt-dlp reports a total, and kept
 errors as yt-dlp reports them when metadata or extraction fails.
 
+### Clipping stability and timeline visual follow-up (2026-06-28)
+
+Changed clipping to download media normally with yt-dlp and trim the local file
+with ffmpeg, using stream copy first and re-encode fallback. This avoids the
+yt-dlp remote section downloader path that can surface ffmpeg code -11 crashes.
+Metadata now fetches thumbnail URLs, and clip timelines use the fetched
+thumbnail as a visual background when available.
+
+### Clip playback preview follow-up (2026-06-28)
+
+Preview jobs now retain their low-resolution downloaded source and expose it
+through `/api/previews/:id/source` with byte-range support. Clip controls have a
+`preview` button that opens a browser video player constrained to the selected
+start/end range, so the user can watch what they are about to download. Later
+UI refinement made the timeline taller, added zoom controls and gray outside
+selection regions, changed `full` to `reset`, added local `clip` buttons, and
+made open previews reload and play after start/end edits. Filmstrip density was
+reduced from 24 sampled frames to 5 to keep the track readable.
+
+### Filmstrip preview follow-up (2026-06-28)
+
+Added `POST /api/previews`, status polling, and sprite delivery endpoints.
+Preview jobs download a low-resolution capped video with yt-dlp, use ffmpeg to
+sample 5 frames into one horizontal JPEG sprite, cap active previews at 2, and
+clean up stale preview temp dirs. The UI starts preview generation when clip
+controls are opened, shows `building preview` while the sprite is generated,
+and swaps the timeline background from thumbnail fallback to the filmstrip when
+ready.
+
+### Reddit support follow-up (2026-07-13)
+
+Added Reddit post, short-link, and hosted-video URLs to the closed host
+allowlist, with matching validation coverage, UI source identification, and
+documentation.
+
 ## File structure
 
 ```
