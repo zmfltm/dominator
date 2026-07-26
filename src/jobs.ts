@@ -5,6 +5,7 @@ import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, parse } from 'node:path';
 import type { Readable } from 'node:stream';
+import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
 import type { JobRequest } from './validate';
 
@@ -100,6 +101,7 @@ export function buildFfmpegReencodeClipArgs(
 
 export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
   return [
+    '--ignore-config',
     ...FORMAT_ARGS[request.format],
     '--no-playlist',
     '--progress',
@@ -193,13 +195,18 @@ export function cancelJob(id: string): CancelJobResult {
     return 'canceled';
   }
 
-  job.child.once('close', () => removeJobDir(job));
-  if (!job.child.kill('SIGTERM')) {
+  let forceKill: NodeJS.Timeout | undefined;
+  job.child.once('close', () => {
+    if (forceKill) clearTimeout(forceKill);
     removeJobDir(job);
+  });
+  if (!signalProcessTree(job.child, 'SIGTERM')) {
+    removeJobDir(job);
+    return 'canceled';
   }
-  const forceKill = setTimeout(() => {
+  forceKill = setTimeout(() => {
     if (job.status === 'canceled') {
-      job.child?.kill('SIGKILL');
+      if (job.child) signalProcessTree(job.child, 'SIGKILL');
     }
   }, 5000);
   forceKill.unref();
@@ -207,7 +214,13 @@ export function cancelJob(id: string): CancelJobResult {
 }
 
 function activeJobCount(): number {
-  return startingJobs + [...jobs.values()].filter((job) => job.status === 'running').length;
+  return startingJobs + [...jobs.values()].filter((job) => (
+    job.status === 'running' || (job.status === 'canceled' && isChildAlive(job.child))
+  )).length;
+}
+
+function isChildAlive(child: Job['child']): boolean {
+  return Boolean(child && child.exitCode === null && child.signalCode === null);
 }
 
 export function isAtJobLimit(activeCount: number, limit = MAX_RUNNING_JOBS): boolean {
@@ -240,7 +253,10 @@ export async function startJob(request: JobRequest): Promise<Job> {
   const args = buildYtDlpArgs(request, dir);
   let child: ChildProcessByStdio<null, Readable, Readable>;
   try {
-    child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn('yt-dlp', args, {
+      detached: DETACH_CHILD_PROCESS,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
   } catch (err) {
     failJob(job, `failed to start yt-dlp: ${(err as Error).message}`);
     return job;
@@ -357,7 +373,10 @@ function runFfmpeg(job: Job, args: string[]): Promise<string | null> {
   return new Promise((resolve) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
     try {
-      child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn('ffmpeg', args, {
+        detached: DETACH_CHILD_PROCESS,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
     } catch (err) {
       resolve(`failed to start ffmpeg: ${(err as Error).message}`);
       return;
@@ -397,8 +416,12 @@ function runFfmpeg(job: Job, args: string[]): Promise<string | null> {
 export async function deleteJob(id: string): Promise<void> {
   const job = jobs.get(id);
   if (!job) return;
-  jobs.delete(id);
   await rm(job.dir, { recursive: true, force: true });
+  if (jobs.get(id) === job) jobs.delete(id);
+}
+
+export function isOwnedTempDirName(name: string): boolean {
+  return /^dominator-(?:preview-)?[A-Za-z0-9]{6}$/.test(name);
 }
 
 export async function sweepLeftoverDirs(): Promise<void> {
@@ -406,13 +429,15 @@ export async function sweepLeftoverDirs(): Promise<void> {
   const entries = await readdir(base);
   await Promise.all(
     entries
-      .filter((name) => name.startsWith(TEMP_PREFIX))
+      .filter(isOwnedTempDirName)
       .map((name) => rm(join(base, name), { recursive: true, force: true })),
   );
 }
 
 function removeJobDir(job: Pick<Job, 'dir'>): void {
-  void rm(job.dir, { recursive: true, force: true });
+  void rm(job.dir, { recursive: true, force: true }).catch((err) => {
+    console.error(`failed to clean job directory ${job.dir}:`, err);
+  });
 }
 
 function failJob(job: Job, message: string): void {

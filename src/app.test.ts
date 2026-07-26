@@ -11,7 +11,11 @@ function postJob(body: string): Response | Promise<Response> {
 
 describe('POST /api/metadata', () => {
   it('rejects bodies that are not JSON', async () => {
-    const res = await app.request('/api/metadata', { method: 'POST', body: 'not json' });
+    const res = await app.request('/api/metadata', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
     expect(res.status).toBe(400);
   });
 
@@ -30,7 +34,11 @@ describe('POST /api/metadata', () => {
 
 describe('POST /api/previews', () => {
   it('rejects bodies that are not JSON', async () => {
-    const res = await app.request('/api/previews', { method: 'POST', body: 'not json' });
+    const res = await app.request('/api/previews', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
     expect(res.status).toBe(400);
   });
 
@@ -49,7 +57,11 @@ describe('POST /api/previews', () => {
 
 describe('POST /api/jobs', () => {
   it('rejects bodies that are not JSON', async () => {
-    const res = await app.request('/api/jobs', { method: 'POST', body: 'not json' });
+    const res = await app.request('/api/jobs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
     expect(res.status).toBe(400);
   });
 
@@ -72,6 +84,42 @@ describe('POST /api/jobs', () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe('clip end must be after start');
+  });
+});
+
+describe('API request security', () => {
+  it('rejects simple cross-origin POST bodies before starting work', async () => {
+    const res = await app.request('/api/jobs', {
+      method: 'POST',
+      headers: {
+        'content-type': 'text/plain',
+        origin: 'https://attacker.example',
+        host: '127.0.0.1:3000',
+      },
+      body: JSON.stringify({ url: 'https://youtu.be/x', format: 'mp4' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('requires JSON content for POST endpoints', async () => {
+    const res = await app.request('/api/metadata', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({ url: 'https://youtu.be/x' }),
+    });
+    expect(res.status).toBe(415);
+  });
+
+  it('rejects oversized API bodies', async () => {
+    const res = await app.request('/api/jobs', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': String(20 * 1024),
+      },
+      body: '{}',
+    });
+    expect(res.status).toBe(413);
   });
 });
 

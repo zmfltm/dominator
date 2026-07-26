@@ -15,6 +15,7 @@ describe('preview args', () => {
     const url = 'https://youtu.be/dQw4w9WgXcQ';
     const args = buildPreviewYtDlpArgs(url, '/tmp/dominator-preview-test');
 
+    expect(args).toContain('--ignore-config');
     expect(args).toContain('--max-filesize');
     expect(args).toContain('/tmp/dominator-preview-test/source.%(ext)s');
     expect(args.at(-2)).toBe('--');
@@ -25,6 +26,7 @@ describe('preview args', () => {
     const url = 'https://youtu.be/dQw4w9WgXcQ';
     const args = buildPreviewDurationArgs(url);
 
+    expect(args).toContain('--ignore-config');
     expect(args).toContain('--skip-download');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
@@ -37,6 +39,13 @@ describe('preview args', () => {
     expect(filter).toContain(`scale=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}`);
     expect(filter).toContain(`tile=${PREVIEW_FRAME_COUNT}x1`);
     expect(args.at(-1)).toBe('/tmp/sprite.jpg');
+  });
+
+  it('samples long videos across their full duration', () => {
+    const args = buildFilmstripFfmpegArgs('/tmp/source.mp4', '/tmp/sprite.jpg', 3600);
+    const filter = args[args.indexOf('-vf') + 1];
+
+    expect(filter).toContain('fps=0.001389');
   });
 });
 

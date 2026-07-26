@@ -1,0 +1,8 @@
+allowBuilds:
+  esbuild: true
+overrides:
+  'esbuild@<0.28.1': 0.28.1
+  'postcss@<8.5.18': 8.5.18
+minimumReleaseAgeExclude:
+  - '@hono/node-server@2.0.12'
+  - 'hono@4.12.32'

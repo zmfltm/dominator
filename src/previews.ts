@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
+import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 
 export const PREVIEW_TEMP_PREFIX = 'dominator-preview-';
 export const PREVIEW_TTL_MS = 60 * 60 * 1000;
@@ -40,6 +41,7 @@ interface ProcessOutput {
 
 const previews = new Map<string, Preview>();
 const previewByUrl = new Map<string, string>();
+const startingPreviewByUrl = new Map<string, Promise<Preview>>();
 let startingPreviews = 0;
 
 export function getPreview(id: string): Preview | undefined {
@@ -69,6 +71,7 @@ export function previewStatusBody(preview: Preview): Record<string, unknown> {
 
 export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
   return [
+    '--ignore-config',
     '-f',
     'worst[height<=360][ext=mp4]/worst[height<=360]/worstvideo*[height<=360][ext=mp4]+worstaudio[ext=m4a]/worstvideo*[height<=360]+worstaudio/worst',
     '--merge-output-format',
@@ -86,6 +89,7 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
 
 export function buildPreviewDurationArgs(url: string): string[] {
   return [
+    '--ignore-config',
     '--skip-download',
     '--no-playlist',
     '--no-warnings',
@@ -112,7 +116,7 @@ export function buildFilmstripFfmpegArgs(
   outputPath: string,
   duration?: number,
 ): string[] {
-  const fps = duration ? clamp(PREVIEW_FRAME_COUNT / duration, 0.02, 4) : 0.1;
+  const fps = duration ? clamp(PREVIEW_FRAME_COUNT / duration, 0.000001, 30) : 0.1;
   const filter = [
     `fps=${fps.toFixed(6)}`,
     `scale=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}:force_original_aspect_ratio=decrease`,
@@ -148,10 +152,22 @@ export function isPreviewStale(
   return now - preview.completedAt > ttlMs;
 }
 
-export async function startPreview(url: string): Promise<Preview> {
+export function startPreview(url: string): Promise<Preview> {
   const cached = getCachedPreview(url);
-  if (cached) return cached;
+  if (cached) return Promise.resolve(cached);
 
+  const existing = startingPreviewByUrl.get(url);
+  if (existing) return existing;
+
+  const preview = createPreview(url);
+  startingPreviewByUrl.set(url, preview);
+  void preview.finally(() => {
+    if (startingPreviewByUrl.get(url) === preview) startingPreviewByUrl.delete(url);
+  }).catch(() => {});
+  return preview;
+}
+
+async function createPreview(url: string): Promise<Preview> {
   if (runningPreviewCount() >= MAX_RUNNING_PREVIEWS) {
     throw new PreviewLimitError();
   }
@@ -175,16 +191,18 @@ export async function startPreview(url: string): Promise<Preview> {
   previewByUrl.set(url, preview.id);
   startingPreviews -= 1;
 
-  void generatePreview(preview);
+  void generatePreview(preview).catch((err) => {
+    console.error(`preview generation cleanup failed for ${preview.id}:`, err);
+  });
   return preview;
 }
 
 export async function deletePreview(id: string): Promise<void> {
   const preview = previews.get(id);
   if (!preview) return;
-  previews.delete(id);
-  if (previewByUrl.get(preview.url) === id) previewByUrl.delete(preview.url);
   await rm(preview.dir, { recursive: true, force: true });
+  if (previews.get(id) === preview) previews.delete(id);
+  if (previewByUrl.get(preview.url) === id) previewByUrl.delete(preview.url);
 }
 
 export async function reapStalePreviews(ttlMs = PREVIEW_TTL_MS, now = Date.now()): Promise<void> {
@@ -212,7 +230,9 @@ async function generatePreview(preview: Preview): Promise<void> {
     preview.error = (err as Error).message;
     preview.completedAt = Date.now();
     preview.child = undefined;
-    await rm(preview.dir, { recursive: true, force: true });
+    await rm(preview.dir, { recursive: true, force: true }).catch((cleanupError) => {
+      console.error(`failed to clean preview ${preview.id}:`, cleanupError);
+    });
   }
 }
 
@@ -285,7 +305,10 @@ function runProcess(
   return new Promise((resolve, reject) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
     try {
-      child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(command, args, {
+        detached: DETACH_CHILD_PROCESS,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
     } catch (err) {
       reject(new Error(`failed to start ${command}: ${(err as Error).message}`));
       return;
@@ -296,6 +319,7 @@ function runProcess(
     let stderr = '';
     let settled = false;
     let timedOut = false;
+    let forceKill: NodeJS.Timeout | undefined;
 
     const settle = (fn: () => void) => {
       if (settled) return;
@@ -306,10 +330,10 @@ function runProcess(
 
     const timeout = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGTERM');
-      const forceKill = setTimeout(() => child.kill('SIGKILL'), 3000);
-      forceKill.unref();
-      settle(() => reject(new Error(`${command} timed out while building preview`)));
+      if (signalProcessTree(child, 'SIGTERM')) {
+        forceKill = setTimeout(() => signalProcessTree(child, 'SIGKILL'), 3000);
+        forceKill.unref();
+      }
     }, timeoutMs);
     timeout.unref();
 
@@ -322,11 +346,18 @@ function runProcess(
     });
 
     child.on('error', (err) => {
-      settle(() => reject(new Error(`failed to start ${command}: ${err.message}`)));
+      const message = timedOut
+        ? `${command} timed out while building preview`
+        : `failed to start ${command}: ${err.message}`;
+      settle(() => reject(new Error(message)));
     });
 
     child.on('close', (code, signal) => {
-      if (timedOut) return;
+      if (forceKill) clearTimeout(forceKill);
+      if (timedOut) {
+        settle(() => reject(new Error(`${command} timed out while building preview`)));
+        return;
+      }
       if (code === 0) {
         settle(() => resolve({ stdout, stderr }));
         return;

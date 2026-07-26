@@ -18,6 +18,40 @@ import { parseJobRequest } from './validate';
 
 export const app = new Hono();
 
+const MAX_API_BODY_BYTES = 16 * 1024;
+
+app.use('/api/*', async (c, next) => {
+  if (c.req.method !== 'POST') return next();
+
+  const origin = c.req.header('origin');
+  const host = c.req.header('host');
+  if (origin && (!host || !hasSameHost(origin, host))) {
+    return c.json({ error: 'cross-origin requests are not allowed' }, 403);
+  }
+  if (c.req.header('sec-fetch-site') === 'cross-site') {
+    return c.json({ error: 'cross-origin requests are not allowed' }, 403);
+  }
+
+  const contentType = c.req.header('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (contentType !== 'application/json' && !contentType?.endsWith('+json')) {
+    return c.json({ error: 'content-type must be application/json' }, 415);
+  }
+
+  const contentLength = Number(c.req.header('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_API_BODY_BYTES) {
+    return c.json({ error: 'request body is too large' }, 413);
+  }
+  return next();
+});
+
+function hasSameHost(origin: string, host: string): boolean {
+  try {
+    return new URL(origin).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 app.post('/api/metadata', async (c) => {
   let body: unknown;
   try {
@@ -245,7 +279,9 @@ interface SSEStream {
 function followJob(job: Job, stream: SSEStream): Promise<void> {
   return new Promise((resolve) => {
     const onProgress = (progress: ProgressEvent) => {
-      void stream.writeSSE({ event: 'progress', data: JSON.stringify(progress) });
+      void stream
+        .writeSSE({ event: 'progress', data: JSON.stringify(progress) })
+        .catch(finish);
     };
     const onDone = () => {
       void stream.writeSSE({ event: 'done', data: 'done' }).then(finish, finish);
@@ -305,8 +341,16 @@ app.get('/api/jobs/:id/file', async (c) => {
     console.error(`file stream error for job ${job.id}:`, err);
     fileStream.destroy();
   });
+  let fullyRead = false;
+  fileStream.once('end', () => {
+    fullyRead = true;
+  });
   fileStream.once('close', () => {
-    void deleteJob(job.id);
+    if (fullyRead) {
+      void deleteJob(job.id).catch((err) => {
+        console.error(`failed to clean delivered job ${job.id}:`, err);
+      });
+    }
   });
   return new Response(Readable.toWeb(fileStream) as ReadableStream, {
     headers: {

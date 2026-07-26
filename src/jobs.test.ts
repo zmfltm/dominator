@@ -6,6 +6,7 @@ import {
   clipOutputPath,
   formatClipTimestamp,
   isAtJobLimit,
+  isOwnedTempDirName,
   isStale,
   MAX_RUNNING_JOBS,
 } from './jobs';
@@ -39,6 +40,15 @@ describe('isStale', () => {
   });
 });
 
+describe('isOwnedTempDirName', () => {
+  it('only matches app-created download and preview directory names', () => {
+    expect(isOwnedTempDirName('dominator-aB123z')).toBe(true);
+    expect(isOwnedTempDirName('dominator-preview-aB123z')).toBe(true);
+    expect(isOwnedTempDirName('dominator-notes')).toBe(false);
+    expect(isOwnedTempDirName('dominator-aB123z-extra')).toBe(false);
+  });
+});
+
 describe('isAtJobLimit', () => {
   it('allows work below the running job limit', () => {
     expect(isAtJobLimit(MAX_RUNNING_JOBS - 1)).toBe(false);
@@ -62,6 +72,7 @@ describe('clip args', () => {
       '/tmp/dominator-test',
     );
 
+    expect(args).toContain('--ignore-config');
     expect(args).not.toContain('--download-sections');
     expect(args).toContain('/tmp/dominator-test/%(title)s.%(ext)s');
     expect(args.at(-2)).toBe('--');

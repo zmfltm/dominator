@@ -2,10 +2,8 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PORT="${PORT:-3000}"
-URL="http://127.0.0.1:${PORT}"
+URL="http://127.0.0.1:3000"
 LOG_FILE="${APP_DIR}/.local-start.log"
-PID_FILE="${APP_DIR}/.local-start.pid"
 
 export PATH="${HOME}/.local/bin:${HOME}/.bun/bin:${HOME}/.npm-global/bin:${PATH}"
 
@@ -29,7 +27,7 @@ if [[ ! -d node_modules ]]; then
 fi
 
 : > "$LOG_FILE"
-setsid -f bash -c 'cd "$1" && echo $$ > "$3" && exec pnpm start >> "$2" 2>&1' _ "$APP_DIR" "$LOG_FILE" "$PID_FILE"
+nohup pnpm start >> "$LOG_FILE" 2>&1 </dev/null &
 
 for _ in {1..30}; do
   if curl -fsS "$URL" >/dev/null 2>&1; then

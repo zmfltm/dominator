@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Dominator</title>
 <link rel="icon" type="image/png" href="/logo.png?v=464aa8a">
 <style>
@@ -16,7 +17,7 @@
   :root {
     --bg: #000;
     --fg: #e8e8e8;
-    --dim: #707070;
+    --dim: #8a8a8a;
     --line: #303030;
     --accent: #19c2d8;
     --error: #ff4444;
@@ -149,7 +150,6 @@
     letter-spacing: 0.08em;
     min-height: 1em;
   }
-  .status:empty { display: none; }
   .status.error { color: var(--error); }
   .queue {
     position: absolute;
@@ -223,15 +223,12 @@
     background: var(--bg);
     padding: 0.35rem 0.5rem;
   }
-  .input-wrap.input-clip-open + .status { transform: translateY(6rem); }
-  .input-wrap.input-clip-open ~ .queue {
-    top: calc(100% + 6.7rem);
-    max-height: calc(50vh - 7.2rem);
+  .input-wrap.input-clip-open + .status {
+    transform: translateY(calc(var(--input-clip-height, 0px) + 0.5rem));
   }
-  .input-wrap.input-preview-open + .status { transform: translateY(22rem); }
-  .input-wrap.input-preview-open ~ .queue {
-    top: calc(100% + 22.7rem);
-    max-height: calc(50vh - 23.2rem);
+  .input-wrap.input-clip-open ~ .queue {
+    top: calc(100% + var(--input-clip-height, 0px) + 1rem);
+    max-height: calc(50vh - var(--input-clip-height, 0px) - 1.5rem);
   }
   .clip-field {
     display: flex;
@@ -411,7 +408,7 @@
       <div id="inputClipPreviewPanel"></div>
     </div>
   </div>
-  <p id="status" class="status"></p>
+  <p id="status" class="status" role="status" aria-live="polite"></p>
   <div class="queue">
     <div id="jobs" class="jobs"></div>
     <div class="list-actions">
@@ -424,6 +421,7 @@
   const MAX_ACTIVE_JOBS = 7;
   const MAX_CLIP_SECONDS = 24 * 60 * 60;
   const DOUBLE_BACKSPACE_MS = 300;
+  const main = document.querySelector('main');
   const form = document.getElementById('form');
   const inputWrap = document.querySelector('.input-wrap');
   const urlInput = document.getElementById('url');
@@ -465,6 +463,12 @@
   let inputClipPreviewReplayTimer = null;
   let lastBackspaceAt = 0;
   const items = [];
+
+  const inputClipResizeObserver = new ResizeObserver(() => {
+    const height = inputClipPanel.hidden ? 0 : inputClipPanel.getBoundingClientRect().height;
+    main.style.setProperty('--input-clip-height', height + 'px');
+  });
+  inputClipResizeObserver.observe(inputClipPanel);
 
   function setStatus(text, isError = false) {
     statusLine.textContent = text;
@@ -517,7 +521,11 @@
     inputClipPanel.hidden = !showPanel;
     inputWrap.classList.toggle('input-clip-open', showPanel);
     inputWrap.classList.toggle('input-preview-open', showPanel && inputClipPreviewOpen);
-    const inputClip = clipPayload({ clipStart: inputClipStart.value, clipEnd: inputClipEnd.value });
+    const inputClip = clipPayload({
+      clipStart: inputClipStart.value,
+      clipEnd: inputClipEnd.value,
+      duration: inputClipDuration,
+    });
     clipInputButton.classList.toggle('active', hasInputClipText());
     inputClipClear.disabled = !hasInputClipText();
     inputClipPreviewButton.disabled = !showPanel || !hasInputClipText() || !inputClip.ok;
@@ -602,7 +610,12 @@
     const params = parsed.searchParams;
     let start = parseLinkedTime(params.get('start') || params.get('t') || params.get('time_continue'));
     let end = parseLinkedTime(params.get('end') || params.get('stop'));
-    const hash = decodeURIComponent(parsed.hash.replace(/^#/, ''));
+    let hash = parsed.hash.replace(/^#/, '');
+    try {
+      hash = decodeURIComponent(hash);
+    } catch {
+      return null;
+    }
     if (hash) {
       const mediaFragment = hash.match(/^t=([^,&-]+)(?:[,\-]([^,&]+))?/);
       const queryFragment = new URLSearchParams(hash);
@@ -632,6 +645,23 @@
       : null;
     if (duration !== null && clipEnd !== null) return Math.max(duration, clipEnd);
     return duration ?? clipEnd;
+  }
+
+  function completeClipText(startText, endText, duration) {
+    const completed = { start: startText, end: endText };
+    if (!completed.start && completed.end) completed.start = '0:00';
+    const start = parseClipTime(completed.start);
+    if (
+      completed.start &&
+      !completed.end &&
+      typeof duration === 'number' &&
+      Number.isFinite(duration) &&
+      Number.isFinite(start) &&
+      duration > start
+    ) {
+      completed.end = formatClipTime(duration);
+    }
+    return completed;
   }
 
   function applyClipRangeToInput(range) {
@@ -669,8 +699,13 @@
   }
 
   function clipPayload(item) {
-    const startText = item.clipStart.trim();
-    const endText = item.clipEnd.trim();
+    let startText = item.clipStart.trim();
+    let endText = item.clipEnd.trim();
+    const duration = typeof item.duration === 'number' && Number.isFinite(item.duration)
+      ? item.duration
+      : null;
+    if (!startText && endText && duration !== null) startText = '0';
+    if (startText && !endText && duration !== null) endText = String(duration);
     if (!startText && !endText) return { ok: true, clip: null };
     if (!startText || !endText) return { ok: false, error: 'clip needs start and end' };
 
@@ -793,6 +828,16 @@
     if (source === 'tiktok') {
       return makeSvg('0 0 24 24', [
         { attrs: { d: 'M16.1 2c.4 3 2.1 4.8 5 5v3.3a8.2 8.2 0 0 1-5-1.6v7.4c0 3.6-2.5 5.9-6.1 5.9A5.8 5.8 0 0 1 4 16.2c0-3.7 3-6.4 6.7-5.8v3.5c-1.7-.5-3.2.6-3.2 2.3 0 1.4 1.1 2.4 2.5 2.4 1.6 0 2.5-1 2.5-2.8V2z', fill: 'currentColor' } },
+      ]);
+    }
+    if (source === 'reddit') {
+      return makeSvg('0 0 24 24', [
+        { tag: 'circle', attrs: { cx: '12', cy: '13', r: '7.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8' } },
+        { attrs: { d: 'M13.5 5.7 15 2.8l3.2.8', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' } },
+        { tag: 'circle', attrs: { cx: '19.2', cy: '4', r: '1.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' } },
+        { tag: 'circle', attrs: { cx: '9.2', cy: '12.4', r: '1.1', fill: 'currentColor' } },
+        { tag: 'circle', attrs: { cx: '14.8', cy: '12.4', r: '1.1', fill: 'currentColor' } },
+        { attrs: { d: 'M8.5 15.6c1.8 1.5 5.2 1.5 7 0', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round' } },
       ]);
     }
     return makeSvg('0 0 24 24', [
@@ -925,11 +970,13 @@
     startHandle.type = 'button';
     startHandle.className = 'clip-handle';
     startHandle.setAttribute('aria-label', 'clip start handle');
+    startHandle.setAttribute('role', 'slider');
 
     const endHandle = document.createElement('button');
     endHandle.type = 'button';
     endHandle.className = 'clip-handle';
     endHandle.setAttribute('aria-label', 'clip end handle');
+    endHandle.setAttribute('role', 'slider');
 
     const tools = document.createElement('div');
     tools.className = 'clip-track-tools';
@@ -984,6 +1031,14 @@
       fill.style.width = Math.max(0, endPercent - startPercent) + '%';
       startHandle.style.left = startPercent + '%';
       endHandle.style.left = endPercent + '%';
+      startHandle.setAttribute('aria-valuemin', '0');
+      startHandle.setAttribute('aria-valuemax', String(values.end));
+      startHandle.setAttribute('aria-valuenow', String(values.start));
+      startHandle.setAttribute('aria-valuetext', formatClipTime(values.start));
+      endHandle.setAttribute('aria-valuemin', String(values.start));
+      endHandle.setAttribute('aria-valuemax', String(values.duration));
+      endHandle.setAttribute('aria-valuenow', String(values.end));
+      endHandle.setAttribute('aria-valuetext', formatClipTime(values.end));
 
       if (filmstrip) {
         const scale = Math.max(1, values.duration / view.duration);
@@ -1003,7 +1058,7 @@
         (filmstrip ? 'filmstrip preview, ' : thumbnail ? 'thumbnail preview, ' : '') +
         'view ' + formatClipTime(view.start) + '-' + formatClipTime(view.end) +
         ' of ' + formatClipTime(values.duration) +
-        ' ' + currentZoom + 'x' +
+        ' ' + view.zoom.toFixed(view.zoom >= 10 ? 0 : 1).replace(/\.0$/, '') + 'x' +
         (values.isKnownDuration ? '' : ' estimate');
     }
 
@@ -1034,6 +1089,25 @@
       setFromPointer(event, handle);
     }
 
+    function adjustWithKeyboard(event, handle) {
+      if (options.disabled) return;
+      const step = event.shiftKey ? 10 : Math.max(0.1, Math.min(1, values.duration / 100));
+      let seconds;
+      if (event.key === 'Home') seconds = handle === 'start' ? 0 : values.start + Math.min(0.1, values.duration / 1000);
+      else if (event.key === 'End') seconds = handle === 'start' ? values.end - Math.min(0.1, values.duration / 1000) : values.duration;
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') seconds = (handle === 'start' ? values.start : values.end) - step;
+      else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') seconds = (handle === 'start' ? values.start : values.end) + step;
+      else return;
+      event.preventDefault();
+      const gap = Math.min(0.1, values.duration / 1000);
+      const start = handle === 'start' ? clamp(seconds, 0, values.end - gap) : values.start;
+      const end = handle === 'end' ? clamp(seconds, values.start + gap, values.duration) : values.end;
+      options.onChange(formatClipTime(start), formatClipTime(end));
+      values = { ...values, start, end };
+      refresh();
+      if (options.onChangeEnd) options.onChangeEnd();
+    }
+
     zoomOut.addEventListener('click', () => setZoom(stepClipZoom(options.getZoom ? options.getZoom() : 1, -1)));
     zoomReset.addEventListener('click', () => setZoom(1));
     zoomIn.addEventListener('click', () => setZoom(stepClipZoom(options.getZoom ? options.getZoom() : 1, 1)));
@@ -1045,6 +1119,8 @@
     });
     startHandle.addEventListener('pointerdown', (event) => beginDrag(event, 'start'));
     endHandle.addEventListener('pointerdown', (event) => beginDrag(event, 'end'));
+    startHandle.addEventListener('keydown', (event) => adjustWithKeyboard(event, 'start'));
+    endHandle.addEventListener('keydown', (event) => adjustWithKeyboard(event, 'end'));
     track.addEventListener('pointermove', (event) => {
       if (dragging) setFromPointer(event, dragging);
     });
@@ -1096,8 +1172,12 @@
     const video = document.createElement('video');
     video.className = 'clip-preview-player';
     video.controls = true;
+    video.playsInline = true;
     video.preload = 'metadata';
     video.src = clipPreviewUrl(source);
+    video.dataset.previewSource = video.src;
+    video.dataset.clipStart = String(start);
+    video.dataset.clipEnd = String(end);
     let shouldPlay = autoPlay;
 
     function seekToStart() {
@@ -1126,7 +1206,9 @@
     video.addEventListener('seeked', () => {
       if (shouldPlay) playWhenReady();
     });
-    video.addEventListener('play', seekToStart);
+    video.addEventListener('play', () => {
+      if (video.currentTime < start || video.currentTime >= end) seekToStart();
+    });
     video.addEventListener('timeupdate', () => {
       if (video.currentTime >= end) {
         video.pause();
@@ -1135,6 +1217,17 @@
     });
     parent.append(video);
     return true;
+  }
+
+  function canReuseClipPreview(video, source, clip) {
+    return Boolean(
+      video &&
+      clip.ok &&
+      clip.clip &&
+      video.dataset.previewSource === clipPreviewUrl(source) &&
+      video.dataset.clipStart === String(clip.clip.start) &&
+      video.dataset.clipEnd === String(clip.clip.end)
+    );
   }
 
   function replayInputPreview() {
@@ -1176,7 +1269,7 @@
         clipInputButton.classList.toggle('active', true);
         inputClipClear.disabled = false;
         inputClipPreviewButton.disabled = false;
-        inputClipDownloadButton.disabled = false;
+        inputClipDownloadButton.disabled = groupRunning || activeCount() >= MAX_ACTIVE_JOBS;
       },
       onChangeEnd: () => {
         replayInputPreview();
@@ -1185,19 +1278,32 @@
   }
 
   function renderInputClipPreview(showPanel) {
+    const clip = clipPayload({
+      clipStart: inputClipStart.value,
+      clipEnd: inputClipEnd.value,
+      duration: inputClipDuration,
+    });
+    const existingVideo = inputClipPreviewPanel.querySelector('video');
+    if (
+      showPanel &&
+      inputClipPreviewOpen &&
+      !inputClipPreviewLoading &&
+      !inputClipPreviewAutoPlay &&
+      canReuseClipPreview(existingVideo, inputClipPreviewSource, clip)
+    ) return;
     clearPreviewPanel(inputClipPreviewPanel);
     if (!showPanel || !inputClipPreviewOpen) return;
     const played = appendClipPreview(
       inputClipPreviewPanel,
       inputClipPreviewSource,
-      clipPayload({ clipStart: inputClipStart.value, clipEnd: inputClipEnd.value }),
+      clip,
       inputClipPreviewLoading,
       inputClipPreviewAutoPlay,
     );
     if (played) inputClipPreviewAutoPlay = false;
   }
 
-  function renderClipPanel(item) {
+  function renderClipPanel(item, reusableVideo = null) {
     const panel = document.createElement('div');
     panel.className = 'clip-panel';
     const previewPanel = document.createElement('div');
@@ -1205,14 +1311,27 @@
     let refreshTrack = () => {};
 
     function renderRowPreview(autoPlay = false) {
+      const clip = clipPayload(item);
+      const shouldAutoPlay = autoPlay || item.clipPreviewAutoPlay;
+      if (
+        item.clipPreviewOpen &&
+        !item.previewLoading &&
+        !shouldAutoPlay &&
+        canReuseClipPreview(reusableVideo, item.previewSource, clip)
+      ) {
+        previewPanel.append(reusableVideo);
+        reusableVideo = null;
+        return;
+      }
+      reusableVideo = null;
       clearPreviewPanel(previewPanel);
       if (!item.clipPreviewOpen) return;
       const played = appendClipPreview(
         previewPanel,
         item.previewSource,
-        clipPayload(item),
+        clip,
         item.previewLoading,
-        autoPlay || item.clipPreviewAutoPlay,
+        shouldAutoPlay,
       );
       if (played) item.clipPreviewAutoPlay = false;
     }
@@ -1242,13 +1361,14 @@
     startText.textContent = 'start';
     const startInput = document.createElement('input');
     startInput.type = 'text';
+    startInput.dataset.clipField = 'start';
     startInput.value = item.clipStart;
     startInput.disabled = !canEditClip(item);
     startInput.setAttribute('aria-label', 'clip start time');
     startInput.addEventListener('input', () => {
       item.clipStart = startInput.value;
       if (clearClipValidation(item)) {
-        render();
+        renderAndRestoreClipFocus(item, 'start', startInput.selectionStart, startInput.selectionEnd);
       } else if (canEditClip(item)) {
         refreshTrack();
         previewClip.disabled = !canEditClip(item) || !hasClipText(item) || !clipPayload(item).ok;
@@ -1265,13 +1385,14 @@
     endText.textContent = 'end';
     const endInput = document.createElement('input');
     endInput.type = 'text';
+    endInput.dataset.clipField = 'end';
     endInput.value = item.clipEnd;
     endInput.disabled = !canEditClip(item);
     endInput.setAttribute('aria-label', 'clip end time');
     endInput.addEventListener('input', () => {
       item.clipEnd = endInput.value;
       if (clearClipValidation(item)) {
-        render();
+        renderAndRestoreClipFocus(item, 'end', endInput.selectionStart, endInput.selectionEnd);
       } else if (canEditClip(item)) {
         refreshTrack();
         previewClip.disabled = !canEditClip(item) || !hasClipText(item) || !clipPayload(item).ok;
@@ -1388,11 +1509,29 @@
     return panel;
   }
 
+  function renderAndRestoreClipFocus(item, field, selectionStart, selectionEnd) {
+    render();
+    const input = jobsList.querySelector(
+      '[data-local-id="' + item.localId + '"] [data-clip-field="' + field + '"]',
+    );
+    if (!input) return;
+    input.focus();
+    if (selectionStart !== null && selectionEnd !== null) {
+      input.setSelectionRange(selectionStart, selectionEnd);
+    }
+  }
+
   function render() {
+    const reusableVideos = new Map();
+    for (const row of jobsList.querySelectorAll('.job[data-local-id]')) {
+      const video = row.querySelector('.clip-preview-player');
+      if (video) reusableVideos.set(row.dataset.localId, video);
+    }
     const active = activeCount();
     const nodes = items.map((item) => {
       const row = document.createElement('section');
       row.className = 'job';
+      row.dataset.localId = String(item.localId);
       row.classList.toggle('complete', item.status === 'complete');
 
       const top = document.createElement('div');
@@ -1454,8 +1593,8 @@
 
       row.append(top);
 
-      if (item.clipOpen || hasClipText(item) || item.status === 'invalid') {
-        row.append(renderClipPanel(item));
+      if (canEditClip(item) && (item.clipOpen || hasClipText(item))) {
+        row.append(renderClipPanel(item, reusableVideos.get(String(item.localId)) || null));
       }
 
       if (item.status !== 'queued' && item.status !== 'complete') {
@@ -1512,10 +1651,11 @@
       error: null,
       jobId: null,
       source: null,
+      metadataPromise: null,
     };
     nextLocalId += 1;
     items.push(item);
-    if (!initialTitle) void loadTitle(item);
+    if (!initialTitle) item.metadataPromise = loadTitle(item);
     render();
     return item;
   }
@@ -1540,6 +1680,10 @@
           item.clipStart = formatClipTime(data.clip.start);
           item.clipEnd = formatClipTime(data.clip.end);
           item.clipOpen = true;
+        } else if (hasClipText(item)) {
+          const completed = completeClipText(item.clipStart, item.clipEnd, item.duration);
+          item.clipStart = completed.start;
+          item.clipEnd = completed.end;
         }
       }
     } catch {
@@ -1577,7 +1721,11 @@
     try {
       data = await response.json();
     } catch {}
-    if (!response.ok) throw new Error(data.error || 'preview failed');
+    if (!response.ok) {
+      const error = new Error(data.error || 'preview failed');
+      error.status = response.status;
+      throw error;
+    }
     if (data.status === 'done' && data.spriteUrl) return data;
     if (!data.previewId) throw new Error('preview failed');
     return pollPreview(data.previewId, isCurrent);
@@ -1595,7 +1743,14 @@
       if (typeof preview.duration === 'number' && Number.isFinite(preview.duration)) {
         item.duration = Math.max(item.duration || 0, preview.duration);
       }
-    } catch {
+    } catch (error) {
+      if (error.status === 429 && items.includes(item)) {
+        window.setTimeout(() => {
+          if (!items.includes(item) || item.filmstrip || !canEditClip(item)) return;
+          item.previewRequested = false;
+          render();
+        }, 1500);
+      }
     } finally {
       if (items.includes(item)) {
         item.previewLoading = false;
@@ -1678,6 +1833,14 @@
         inputClipStart.value = formatClipTime(data.clip.start);
         inputClipEnd.value = formatClipTime(data.clip.end);
         inputClipOpen = true;
+      } else if (hasInputClipText()) {
+        const completed = completeClipText(
+          inputClipStart.value,
+          inputClipEnd.value,
+          inputClipDuration,
+        );
+        inputClipStart.value = completed.start;
+        inputClipEnd.value = completed.end;
       }
     } catch {
     } finally {
@@ -1752,19 +1915,26 @@
   async function startItem(item) {
     if (item.status !== 'queued') return;
 
+    item.status = 'starting';
+    item.error = null;
+    render();
+
+    if (item.titleLoading && hasClipText(item) && item.metadataPromise) {
+      await item.metadataPromise;
+      if (item.status !== 'starting') return;
+    }
+
     const clip = clipPayload(item);
     if (!clip.ok) {
       item.status = 'invalid';
       item.error = clip.error;
       setStatus(clip.error, true);
-      render();
+      if (groupRunning) runQueue();
+      else render();
       return;
     }
 
-    item.status = 'starting';
-    item.error = null;
-    render();
-
+    setStatus('');
     const body = { url: item.url, format: item.format };
     if (clip.clip) body.clip = clip.clip;
 
@@ -1873,7 +2043,6 @@
     if (queuedCount() === 0 && activeCount() === 0) {
       groupRunning = false;
     }
-    setStatus('');
     render();
   }
 
@@ -1960,7 +2129,11 @@
   });
 
   inputClipPreviewButton.addEventListener('click', () => {
-    const clip = clipPayload({ clipStart: inputClipStart.value, clipEnd: inputClipEnd.value });
+    const clip = clipPayload({
+      clipStart: inputClipStart.value,
+      clipEnd: inputClipEnd.value,
+      duration: inputClipDuration,
+    });
     if (!clip.ok) {
       setStatus(clip.error, true);
       return;
@@ -1974,7 +2147,11 @@
   });
 
   inputClipDownloadButton.addEventListener('click', () => {
-    const clip = clipPayload({ clipStart: inputClipStart.value, clipEnd: inputClipEnd.value });
+    const clip = clipPayload({
+      clipStart: inputClipStart.value,
+      clipEnd: inputClipEnd.value,
+      duration: inputClipDuration,
+    });
     if (!clip.ok) {
       setStatus(clip.error, true);
       return;

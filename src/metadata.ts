@@ -1,6 +1,12 @@
 import { spawn } from 'node:child_process';
+import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 
 export const METADATA_TIMEOUT_MS = 15_000;
+export const MAX_RUNNING_METADATA = 7;
+
+let runningMetadata = 0;
+const metadataWaiters: Array<() => void> = [];
+const metadataByUrl = new Map<string, Promise<VideoMetadata>>();
 
 export class MetadataError extends Error {
   constructor(message: string) {
@@ -27,17 +33,22 @@ export function firstNonEmptyLine(output: string): string | undefined {
 }
 
 export function parseVideoMetadataOutput(output: string): VideoMetadata | undefined {
-  const [title, durationText, clipStartText, clipEndText, thumbnailText] = output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (!title || title === 'NA') return undefined;
+  const line = firstNonEmptyLine(output);
+  if (!line) return undefined;
 
-  const duration = parseOptionalSeconds(durationText);
-  const clipStart = parseOptionalSeconds(clipStartText);
-  const clipEnd = parseOptionalSeconds(clipEndText);
-  const thumbnail = parseOptionalHttpUrl(thumbnailText);
-  const metadata: VideoMetadata = { title };
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  if (typeof data.title !== 'string' || data.title.trim().length === 0) return undefined;
+
+  const duration = parseOptionalSeconds(data.duration);
+  const clipStart = parseOptionalSeconds(data.section_start);
+  const clipEnd = parseOptionalSeconds(data.section_end);
+  const thumbnail = parseOptionalHttpUrl(data.thumbnail);
+  const metadata: VideoMetadata = { title: data.title };
   if (duration !== undefined) metadata.duration = duration;
   if (thumbnail !== undefined) metadata.thumbnail = thumbnail;
   if (clipStart !== undefined && clipEnd !== undefined && clipEnd > clipStart) {
@@ -46,15 +57,15 @@ export function parseVideoMetadataOutput(output: string): VideoMetadata | undefi
   return metadata;
 }
 
-function parseOptionalSeconds(value: string | undefined): number | undefined {
-  if (!value || value === 'NA') return undefined;
+function parseOptionalSeconds(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === 'NA') return undefined;
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds < 0) return undefined;
   return Math.round(seconds * 1000) / 1000;
 }
 
-function parseOptionalHttpUrl(value: string | undefined): string | undefined {
-  if (!value || value === 'NA') return undefined;
+function parseOptionalHttpUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value || value === 'NA') return undefined;
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
@@ -77,32 +88,68 @@ export async function fetchVideoTitle(url: string, timeoutMs = METADATA_TIMEOUT_
 }
 
 export function fetchVideoMetadata(url: string, timeoutMs = METADATA_TIMEOUT_MS): Promise<VideoMetadata> {
+  const existing = metadataByUrl.get(url);
+  if (existing) return existing;
+
+  const lookup = runLimitedMetadataLookup(url, timeoutMs);
+  metadataByUrl.set(url, lookup);
+  void lookup.finally(() => {
+    if (metadataByUrl.get(url) === lookup) metadataByUrl.delete(url);
+  }).catch(() => {});
+  return lookup;
+}
+
+async function runLimitedMetadataLookup(url: string, timeoutMs: number): Promise<VideoMetadata> {
+  await acquireMetadataSlot();
+  try {
+    return await runVideoMetadata(url, timeoutMs);
+  } finally {
+    releaseMetadataSlot();
+  }
+}
+
+function acquireMetadataSlot(): Promise<void> {
+  if (runningMetadata < MAX_RUNNING_METADATA) {
+    runningMetadata += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => metadataWaiters.push(resolve));
+}
+
+function releaseMetadataSlot(): void {
+  const next = metadataWaiters.shift();
+  if (next) {
+    next();
+    return;
+  }
+  runningMetadata -= 1;
+}
+
+export function buildMetadataYtDlpArgs(url: string): string[] {
+  return [
+    '--ignore-config',
+    '--skip-download',
+    '--no-playlist',
+    '--no-warnings',
+    '--print',
+    '%(.{title,duration,section_start,section_end,thumbnail})j',
+    '--',
+    url,
+  ];
+}
+
+function runVideoMetadata(url: string, timeoutMs: number): Promise<VideoMetadata> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      'yt-dlp',
-      [
-        '--skip-download',
-        '--no-playlist',
-        '--no-warnings',
-        '--print',
-        'title',
-        '--print',
-        'duration',
-        '--print',
-        'section_start',
-        '--print',
-        'section_end',
-        '--print',
-        'thumbnail',
-        '--',
-        url,
-      ],
-      { stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    const child = spawn('yt-dlp', buildMetadataYtDlpArgs(url), {
+      detached: DETACH_CHILD_PROCESS,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let timedOut = false;
+    let forceKillTimer: NodeJS.Timeout | undefined;
 
     const settle = (fn: () => void) => {
       if (settled) return;
@@ -112,8 +159,11 @@ export function fetchVideoMetadata(url: string, timeoutMs = METADATA_TIMEOUT_MS)
     };
 
     const timeout = setTimeout(() => {
-      child.kill('SIGTERM');
-      settle(() => reject(new MetadataError('could not fetch title before timeout')));
+      timedOut = true;
+      if (signalProcessTree(child, 'SIGTERM')) {
+        forceKillTimer = setTimeout(() => signalProcessTree(child, 'SIGKILL'), 3000);
+        forceKillTimer.unref();
+      }
     }, timeoutMs);
     timeout.unref();
 
@@ -126,11 +176,19 @@ export function fetchVideoMetadata(url: string, timeoutMs = METADATA_TIMEOUT_MS)
     });
 
     child.on('error', (err) => {
-      settle(() => reject(new MetadataError(`failed to start yt-dlp: ${err.message}`)));
+      const message = timedOut
+        ? 'could not fetch title before timeout'
+        : `failed to start yt-dlp: ${err.message}`;
+      settle(() => reject(new MetadataError(message)));
     });
 
     child.on('close', (code) => {
+      if (forceKillTimer) clearTimeout(forceKillTimer);
       if (settled) return;
+      if (timedOut) {
+        settle(() => reject(new MetadataError('could not fetch title before timeout')));
+        return;
+      }
       if (code !== 0) {
         const message = extractYtDlpError(stderr) ?? `yt-dlp exited with code ${code}`;
         settle(() => reject(new MetadataError(message)));
