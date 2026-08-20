@@ -79,6 +79,20 @@ describe('clip args', () => {
     expect(args.at(-1)).toBe(url);
   });
 
+  it('keeps SoundCloud audio in the best source format and prefixes playlist order', () => {
+    const url = 'https://soundcloud.com/artist/track';
+    const args = buildYtDlpArgs(
+      { url, format: 'audio', playlist: { index: 3, count: 12 } },
+      '/tmp/dominator-test',
+    );
+
+    expect(args).toContain('bestaudio/best');
+    expect(args).not.toContain('--extract-audio');
+    expect(args).toContain('/tmp/dominator-test/03 - %(title)s.%(ext)s');
+    expect(args.at(-2)).toBe('--');
+    expect(args.at(-1)).toBe(url);
+  });
+
   it('builds stream-copy ffmpeg args for clipped MP4 output', () => {
     expect(
       buildFfmpegCopyClipArgs(

@@ -29,13 +29,15 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 - `src/progress.ts`: yt-dlp progress parser.
 - `src/metadata.ts`: title, duration, clip, and thumbnail lookup via yt-dlp `--skip-download --print ...`.
 - `src/previews.ts`: low-resolution preview download and ffmpeg filmstrip sprite generation, max 2 active previews.
+- `src/soundcloud.ts`: bounded SoundCloud track and playlist expansion via yt-dlp, max 500 tracks.
 - `src/jobs.ts`: in-memory job map, yt-dlp subprocess lifecycle, local ffmpeg clipping, cancellation, stale reaping, max 7 active jobs.
 - `src/app.ts`: Hono routes for creating jobs, SSE events, cancellation, and file delivery.
 - `src/server.ts`: binary checks, temp sweep, stale reaper interval, local bind.
 
 ## Current UI behavior
 
-- Initial queued downloads are MP4.
+- Initial queued video downloads are MP4. SoundCloud tracks use best audio in the source container without conversion.
+- SoundCloud playlist links expand into one queue row per track and preserve playlist order in saved filenames.
 - The URL input is intentionally blank, with no placeholder text.
 - The search/input area should stay centered in the page and fixed in place as queue rows are added; rows grow downward underneath it.
 - Queued rows should be compact and show the fetched video title when available, falling back to the URL. Titles should wrap and use the full row width instead of truncating.
@@ -57,7 +59,7 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 ## Conventions
 
 - TypeScript uses single quotes, semicolons, 2-space indentation.
-- Keep the app local/private first. It binds to `127.0.0.1` on purpose.
+- Keep the app local/private first. It binds to `127.0.0.1` by default. The explicit `start:wsl` path may bind to `0.0.0.0` only for Windows localhost forwarding.
 - Do not add a frontend framework or build pipeline unless explicitly asked.
 - Avoid em dashes in code, comments, UI copy, and commits.
 - Keep UI copy plain and non-cringey. No Psycho-Pass flavor text in statuses.
@@ -67,7 +69,7 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 
 - URLs are untrusted input. Keep host allowlisting in `src/validate.ts` closed.
 - Keep subprocess execution as `spawn` with an args array and `--` before the URL, including metadata lookups.
-- Do not expose port 3000 directly. For remote personal use, recommend Cloudflare Tunnel plus Cloudflare Access.
+- Do not expose port 3000 directly. The WSL bind exception is for Windows localhost forwarding and can widen network reachability depending on WSL and Windows Firewall settings. For remote personal use, recommend Cloudflare Tunnel plus Cloudflare Access.
 - If increasing public exposure, add stronger app-level auth, rate limiting, and timeouts first.
 
 ## External tools

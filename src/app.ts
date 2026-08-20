@@ -14,7 +14,12 @@ import {
   startPreview,
 } from './previews';
 import type { ProgressEvent } from './progress';
-import { parseJobRequest } from './validate';
+import {
+  resolveSoundCloudUrl,
+  SoundCloudError,
+  SoundCloudLimitError,
+} from './soundcloud';
+import { isSoundCloudUrl, parseJobRequest } from './validate';
 
 export const app = new Hono();
 
@@ -74,6 +79,38 @@ app.post('/api/metadata', async (c) => {
     return c.json(metadata);
   } catch (err) {
     if (err instanceof MetadataError) {
+      return c.json({ error: err.message }, 502);
+    }
+    throw err;
+  }
+});
+
+app.post('/api/soundcloud', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'request body must be JSON' }, 400);
+  }
+  if (typeof body !== 'object' || body === null) {
+    return c.json({ error: 'request body must be a JSON object' }, 400);
+  }
+  const url = (body as Record<string, unknown>).url;
+  const parsed = parseJobRequest({ url, format: 'mp4' });
+  if (!parsed.ok) {
+    return c.json({ error: parsed.error }, 400);
+  }
+  if (!isSoundCloudUrl(parsed.value.url)) {
+    return c.json({ error: 'only SoundCloud URLs can be expanded here' }, 400);
+  }
+  try {
+    const result = await resolveSoundCloudUrl(parsed.value.url);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof SoundCloudLimitError) {
+      return c.json({ error: err.message }, 429);
+    }
+    if (err instanceof SoundCloudError) {
       return c.json({ error: err.message }, 502);
     }
     throw err;

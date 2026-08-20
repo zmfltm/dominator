@@ -44,6 +44,7 @@ let startingJobs = 0;
 const FORMAT_ARGS: Record<JobRequest['format'], string[]> = {
   mp4: ['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b'],
   mp3: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
+  audio: ['-f', 'bestaudio/best'],
 };
 
 type Clip = NonNullable<JobRequest['clip']>;
@@ -107,10 +108,16 @@ export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
     '--progress',
     '--newline',
     '-o',
-    join(dir, '%(title)s.%(ext)s'),
+    join(dir, `${playlistFilenamePrefix(request)}%(title)s.%(ext)s`),
     '--',
     request.url,
   ];
+}
+
+function playlistFilenamePrefix(request: JobRequest): string {
+  if (!request.playlist) return '';
+  const width = Math.max(2, String(request.playlist.count).length);
+  return `${String(request.playlist.index).padStart(width, '0')} - `;
 }
 
 function ffmpegBaseClipArgs(inputPath: string, clip: Clip): string[] {

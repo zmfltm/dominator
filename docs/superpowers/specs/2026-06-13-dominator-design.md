@@ -1,32 +1,44 @@
 # dominator design
 
-A personal, local-only video downloader for YouTube, Twitter/X, Instagram,
-TikTok, and Reddit with a minimal black UI. Paste one or more URLs, queue MP4 downloads,
-optionally clip queued videos by start/end time, and save the finished files
-from the browser.
+A personal, local-only downloader for YouTube, Twitter/X, Instagram, TikTok,
+Reddit, and SoundCloud with a minimal black UI. Paste one or more URLs, queue
+MP4 downloads, optionally clip queued videos by start/end time, or expand a
+SoundCloud playlist into best-quality audio tracks.
 
 > Amended 2026-06-13: extended from YouTube-only to four sites (YouTube,
 > Twitter/X, Instagram, TikTok), public posts only.
 >
 > Amended 2026-07-13: added Reddit, including Reddit post, short-link, and
 > hosted-video URLs.
+>
+> Amended 2026-07-28: added an explicit WSL launch mode that binds to
+> `0.0.0.0` so a Windows-hosted browser can use WSL localhost forwarding. The
+> default launch remains bound to `127.0.0.1`.
+>
+> Amended 2026-08-01: added SoundCloud track and playlist expansion with
+> source-format best audio downloads.
 
 ## Goals
 
 - Paste video URLs from supported sites and queue MP4 downloads.
-- Set optional start/end times per row to download only a clip.
+- Paste a SoundCloud track or playlist and queue every track as best audio.
+- Set optional start/end times per video row to download only a clip.
 - Super minimal black single page with one input, queue rows, progress bars,
   and plain status copy.
-- Runs locally with `pnpm start` on `http://localhost:3000`. No hosting, no
-  accounts, no database.
+- Runs locally with `pnpm start` on `http://localhost:3000`. WSL users can use
+  `pnpm start:wsl` when the browser runs on Windows. No hosting, no accounts,
+  no database.
 
 ## Non-goals
 
-- No public deployment. Server binds to `127.0.0.1` only.
+- No public deployment. The server binds to `127.0.0.1` by default. The
+  explicit WSL launch mode binds to `0.0.0.0` only for Windows localhost
+  forwarding and must not be treated as a public hosting mode.
 - No quality picker table or persistent history.
-- No login or cookie support: public posts only. Login-gated content (common
-  on Instagram, some tweets) fails with yt-dlp's error shown in the UI.
-- No support for sites beyond the five; the host allowlist stays closed.
+- No login or cookie support: public posts and tracks only. Login-gated content
+  and account-only SoundCloud quality fail or remain unavailable.
+- No support for sites beyond the six listed services; the host allowlist stays
+  closed.
 
 ## Prerequisites
 
@@ -45,6 +57,7 @@ dominator/
 ├── src/app.ts             # routes
 ├── src/jobs.ts            # yt-dlp jobs
 ├── src/previews.ts        # filmstrip preview jobs
+├── src/soundcloud.ts      # SoundCloud track and playlist expansion
 ├── package.json
 └── README.md
 ```
@@ -61,6 +74,10 @@ UI: vanilla HTML/CSS/JS in a single file.
   `{ title, duration?, thumbnail?, clip? }` so queued rows can show video names
   before download starts and clip controls can size their timeline and show a
   thumbnail-backed track when metadata is known.
+- `POST /api/soundcloud`, body `{ url }`. Accepts only allowlisted SoundCloud
+  URLs and runs a bounded yt-dlp flat-playlist lookup. Returns `{ title?,
+  tracks: [{ url, title? }] }`. Direct track URLs return one track. Playlists
+  preserve source order and are capped at 500 tracks.
 - `POST /api/previews`, body `{ url }`. Validates the host allowlist, starts a
   capped background preview job, and returns `{ previewId, status,
   spriteUrl?, sourceUrl? }`. Preview jobs download a low-resolution video with
@@ -68,8 +85,11 @@ UI: vanilla HTML/CSS/JS in a single file.
   /api/previews/:id` polls status, `GET /api/previews/:id/sprite` serves the
   finished JPEG sprite, and `GET /api/previews/:id/source` serves the preview
   video with byte-range support so the browser can play the selected clip range.
-- `POST /api/jobs`, body `{ url, format: 'mp4' | 'mp3', clip?: { start, end } }`.
-  `clip.start` and `clip.end` are seconds, must be finite numbers between 0
+- `POST /api/jobs`, body `{ url, format: 'mp4' | 'mp3' | 'audio', clip?: {
+  start, end }, playlist?: { index, count } }`. `audio` is limited to
+  SoundCloud and cannot be clipped. `playlist` is limited to SoundCloud audio,
+  validates positions up to 500, and prefixes filenames so saved tracks sort in
+  playlist order. `clip.start` and `clip.end` are seconds, must be finite numbers between 0
   and 24 hours, and `end` must be after `start`.
   Validates that the URL parses and its host is on the allowlist:
   - YouTube: `youtube.com`, `www.youtube.com`, `m.youtube.com`,
@@ -81,10 +101,12 @@ UI: vanilla HTML/CSS/JS in a single file.
     `vm.tiktok.com`, `vt.tiktok.com`
   - Reddit: `reddit.com`, `www.reddit.com`, `old.reddit.com`,
     `new.reddit.com`, `m.reddit.com`, `redd.it`, `v.redd.it`
+  - SoundCloud: `soundcloud.com`, `www.soundcloud.com`, `m.soundcloud.com`,
+    `on.soundcloud.com`, `api.soundcloud.com`, `api-v2.soundcloud.com`
   Spawns yt-dlp writing into a per-job temp dir. Returns `{ jobId }`.
   Rejects with 429 once 7 jobs are already running or starting. Rejects
   with 400 and the message
-  `only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported`
+  `only YouTube, Twitter/X, Instagram, TikTok, Reddit, and SoundCloud URLs are supported`
   for unknown hosts.
 - `GET /api/jobs/:id/events`. SSE stream of progress events
   `{ percent, stage, downloadedBytes?, totalBytes? }` parsed from yt-dlp
@@ -110,6 +132,9 @@ be interpreted by a shell.
   typical for Twitter/Instagram/TikTok/Reddit. Worst case the file is a non-mp4
   container, named honestly by its real extension).
 - MP3: `-x --audio-format mp3 --audio-quality 0`.
+- SoundCloud audio: `-f "bestaudio/best"`. The selected source container is
+  preserved without lossy conversion. Playlist jobs remain one track per job
+  and still pass `--no-playlist`; the UI expands the playlist first.
 - Optional clipping: yt-dlp downloads the selected media normally, then the
   server trims the local output with ffmpeg into `<title>.clip.<format>`. The
   first trim attempt stream-copies for speed, then falls back to re-encoding if
@@ -150,8 +175,12 @@ Pure black page, centered column:
   they finish. A cancel button appears below the list while downloads are active
   and cancels active plus queued downloads. A clear button appears below the
   list once rows exist; clearing also cancels active jobs.
+- SoundCloud URLs are resolved before queueing. A direct track creates one
+  best-audio row. A playlist creates one row per track in source order, then
+  group downloading uses the existing seven-job cap. SoundCloud rows do not
+  show video clip controls.
 - Compact queue rows with a tiny monochrome source icon matched to YouTube,
-  X, TikTok, Instagram, or Reddit, and the fetched video title when available. Each
+  X, TikTok, Instagram, Reddit, or SoundCloud, and the fetched title when available. Each
   queued, canceled, or invalid row has a clip button that reveals start/end
   inputs plus a draggable timeline track; inputs accept seconds, `m:ss`, or
   `h:mm:ss`, and leaving both blank downloads the full video. Opening clip
@@ -184,7 +213,9 @@ Pure black page, centered column:
 
 ## Security
 
-- Listens on `127.0.0.1` only; unreachable from the network.
+- Listens on `127.0.0.1` by default. WSL mode explicitly listens on
+  `0.0.0.0`; its reachability depends on WSL networking and Windows Firewall,
+  so use it only on a trusted local machine.
 - URL host allowlist on input; subprocess spawn with args array.
 - Job IDs are random (crypto UUID); the file endpoint serves only files from
   that job's own temp dir.

@@ -355,10 +355,12 @@
   .job-state.error { color: var(--error); }
   .bar { height: 2px; background: var(--line); overflow: hidden; }
   .bar div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
-  .list-actions { display: flex; justify-content: flex-end; gap: 0.8rem; }
   .list-actions {
     position: sticky;
     bottom: 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.8rem;
     background: var(--bg);
     padding-top: 0.25rem;
   }
@@ -387,7 +389,7 @@
   <div class="input-wrap">
     <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled>×</button>
     <form id="form">
-      <input id="url" type="text" aria-label="video URL" autofocus spellcheck="false">
+      <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
       <button id="add" type="button" hidden disabled>add</button>
       <button id="clipInput" type="button" hidden disabled>clip</button>
       <button id="download" type="submit" disabled>download</button>
@@ -395,11 +397,11 @@
     <div id="inputClipPanel" class="clip-panel input-clip-panel" hidden>
       <label class="clip-field">
         <span>start</span>
-        <input id="inputClipStart" type="text" aria-label="clip start time">
+        <input id="inputClipStart" name="input-clip-start" type="text" aria-label="clip start time">
       </label>
       <label class="clip-field">
         <span>end</span>
-        <input id="inputClipEnd" type="text" aria-label="clip end time">
+        <input id="inputClipEnd" name="input-clip-end" type="text" aria-label="clip end time">
       </label>
       <button id="inputClipClear" class="clear-clip" type="button" disabled>reset</button>
       <button id="inputClipPreview" class="preview-clip" type="button" disabled>preview</button>
@@ -444,6 +446,8 @@
 
   let nextLocalId = 1;
   let groupRunning = false;
+  let inputResolving = false;
+  let inputResolveToken = 0;
   let inputClipOpen = false;
   let inputClipDuration = null;
   let inputClipThumbnail = null;
@@ -462,6 +466,8 @@
   let inputClipPreviewTimer = null;
   let inputClipPreviewReplayTimer = null;
   let lastBackspaceAt = 0;
+  let clipDragActive = false;
+  let renderQueued = false;
   const items = [];
 
   const inputClipResizeObserver = new ResizeObserver(() => {
@@ -480,7 +486,9 @@
   }
 
   function canEditClip(item) {
-    return item.status === 'queued' || item.status === 'canceled' || item.status === 'invalid';
+    return item.format !== 'audio' && (
+      item.status === 'queued' || item.status === 'canceled' || item.status === 'invalid'
+    );
   }
 
   function hasClipText(item) {
@@ -520,7 +528,6 @@
     const showPanel = hasInput && inputClipOpen;
     inputClipPanel.hidden = !showPanel;
     inputWrap.classList.toggle('input-clip-open', showPanel);
-    inputWrap.classList.toggle('input-preview-open', showPanel && inputClipPreviewOpen);
     const inputClip = clipPayload({
       clipStart: inputClipStart.value,
       clipEnd: inputClipEnd.value,
@@ -704,8 +711,8 @@
     const duration = typeof item.duration === 'number' && Number.isFinite(item.duration)
       ? item.duration
       : null;
-    if (!startText && endText && duration !== null) startText = '0';
-    if (startText && !endText && duration !== null) endText = String(duration);
+    if (!startText && endText && duration !== null) startText = formatClipTime(0);
+    if (startText && !endText && duration !== null) endText = formatClipTime(duration);
     if (!startText && !endText) return { ok: true, clip: null };
     if (!startText || !endText) return { ok: false, error: 'clip needs start and end' };
 
@@ -740,21 +747,25 @@
   }
 
   function updateControls() {
-    const hasInput = urlInput.value.trim().length > 0;
+    const inputUrls = urlInput.value.trim().split(/\s+/).filter(Boolean);
+    const hasInput = inputUrls.length > 0;
+    const canClipInput = hasInput && !inputUrls.some((url) => sourceForUrl(url) === 'soundcloud');
     const hasQueuedOrCanceled = queuedCount() > 0 || restartableCount() > 0;
     const active = activeCount();
 
     toggleButton(addButton, hasInput);
-    toggleButton(clipInputButton, hasInput);
+    toggleButton(clipInputButton, canClipInput);
     toggleButton(clearTextButton, hasInput);
     toggleButton(cancelButton, active > 0);
     toggleButton(clearButton, items.length > 0);
     form.classList.toggle('has-input', hasInput);
+    form.setAttribute('aria-busy', inputResolving ? 'true' : 'false');
 
-    if (!hasInput) resetInputClip();
-    updateInputClipControls(hasInput);
+    if (!canClipInput) resetInputClip();
+    updateInputClipControls(canClipInput);
 
-    downloadButton.disabled = !hasInput && !hasQueuedOrCanceled;
+    addButton.disabled = !hasInput || inputResolving;
+    downloadButton.disabled = inputResolving || (!hasInput && !hasQueuedOrCanceled);
     downloadButton.classList.toggle('ready', !downloadButton.disabled);
   }
 
@@ -771,6 +782,7 @@
     if (source === 'instagram') return 'Instagram';
     if (source === 'x') return 'X';
     if (source === 'reddit') return 'Reddit';
+    if (source === 'soundcloud') return 'SoundCloud';
     return 'site';
   }
 
@@ -790,6 +802,7 @@
     if (matchesHost(host, 'instagram.com')) return 'instagram';
     if (matchesHost(host, 'twitter.com') || matchesHost(host, 'x.com')) return 'x';
     if (host === 'redd.it' || matchesHost(host, 'reddit.com') || host === 'v.redd.it') return 'reddit';
+    if (matchesHost(host, 'soundcloud.com')) return 'soundcloud';
     return 'generic';
   }
 
@@ -840,6 +853,12 @@
         { attrs: { d: 'M8.5 15.6c1.8 1.5 5.2 1.5 7 0', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round' } },
       ]);
     }
+    if (source === 'soundcloud') {
+      return makeSvg('0 0 24 24', [
+        { attrs: { d: 'M9.2 17.5H5.5a3.5 3.5 0 0 1-.4-7A5.8 5.8 0 0 1 16 8.7a4.4 4.4 0 1 1 .8 8.8z', fill: 'currentColor' } },
+        { attrs: { d: 'M3 12.2v4M5 10.8v6.7M7 9.5v8M9 8.2v9.3', fill: 'none', stroke: '#000', 'stroke-width': '1.1', 'stroke-linecap': 'round' } },
+      ]);
+    }
     return makeSvg('0 0 24 24', [
       { tag: 'circle', attrs: { cx: '12', cy: '12', r: '8', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' } },
     ]);
@@ -887,6 +906,26 @@
       active < MAX_ACTIVE_JOBS &&
       (item.status === 'queued' || item.status === 'canceled')
     );
+  }
+
+  function canPreviewClipNow(item) {
+    return canEditClip(item) && hasClipText(item) && (clipPayload(item).ok || item.status === 'invalid');
+  }
+
+  function canDownloadClipNow(item) {
+    return (
+      canEditClip(item) &&
+      hasClipText(item) &&
+      clipPayload(item).ok &&
+      !groupRunning &&
+      activeCount() < MAX_ACTIVE_JOBS
+    );
+  }
+
+  function endClipDrag() {
+    if (!clipDragActive) return;
+    clipDragActive = false;
+    if (renderQueued) render();
   }
 
   function clipTrackValues(startText, endText, duration) {
@@ -1083,6 +1122,7 @@
     function beginDrag(event, handle) {
       if (options.disabled) return;
       dragging = handle;
+      clipDragActive = true;
       track.setPointerCapture?.(event.pointerId);
       event.preventDefault();
       event.stopPropagation();
@@ -1127,6 +1167,7 @@
     function finishDrag() {
       if (dragging && options.onChangeEnd) options.onChangeEnd();
       dragging = null;
+      endClipDrag();
     }
     track.addEventListener('pointerup', finishDrag);
     track.addEventListener('pointercancel', finishDrag);
@@ -1266,7 +1307,7 @@
         inputClipStart.value = start;
         inputClipEnd.value = end;
         setStatus('');
-        clipInputButton.classList.toggle('active', true);
+        clipInputButton.classList.add('active');
         inputClipClear.disabled = false;
         inputClipPreviewButton.disabled = false;
         inputClipDownloadButton.disabled = groupRunning || activeCount() >= MAX_ACTIVE_JOBS;
@@ -1361,6 +1402,7 @@
     startText.textContent = 'start';
     const startInput = document.createElement('input');
     startInput.type = 'text';
+    startInput.name = 'clip-start';
     startInput.dataset.clipField = 'start';
     startInput.value = item.clipStart;
     startInput.disabled = !canEditClip(item);
@@ -1371,8 +1413,8 @@
         renderAndRestoreClipFocus(item, 'start', startInput.selectionStart, startInput.selectionEnd);
       } else if (canEditClip(item)) {
         refreshTrack();
-        previewClip.disabled = !canEditClip(item) || !hasClipText(item) || !clipPayload(item).ok;
-        clipDownload.disabled = !canEditClip(item) || !hasClipText(item) || !clipPayload(item).ok || groupRunning || activeCount() >= MAX_ACTIVE_JOBS;
+        previewClip.disabled = !canPreviewClipNow(item);
+        clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
         updateControls();
       }
@@ -1385,6 +1427,7 @@
     endText.textContent = 'end';
     const endInput = document.createElement('input');
     endInput.type = 'text';
+    endInput.name = 'clip-end';
     endInput.dataset.clipField = 'end';
     endInput.value = item.clipEnd;
     endInput.disabled = !canEditClip(item);
@@ -1395,8 +1438,8 @@
         renderAndRestoreClipFocus(item, 'end', endInput.selectionStart, endInput.selectionEnd);
       } else if (canEditClip(item)) {
         refreshTrack();
-        previewClip.disabled = !canEditClip(item) || !hasClipText(item) || !clipPayload(item).ok;
-        clipDownload.disabled = !canEditClip(item) || !hasClipText(item) || !clipPayload(item).ok || groupRunning || activeCount() >= MAX_ACTIVE_JOBS;
+        previewClip.disabled = !canPreviewClipNow(item);
+        clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
         updateControls();
       }
@@ -1412,7 +1455,6 @@
     clearClip.addEventListener('click', () => {
       item.clipStart = '';
       item.clipEnd = '';
-      item.clipOpen = false;
       item.clipPreviewOpen = false;
       item.clipPreviewAutoPlay = false;
       if (item.clipPreviewReplayTimer) clearTimeout(item.clipPreviewReplayTimer);
@@ -1427,8 +1469,7 @@
     previewClip.className = 'preview-clip';
     previewClip.textContent = item.clipPreviewOpen ? 'hide preview' : 'preview';
     previewClip.title = 'preview this clip';
-    const currentClip = clipPayload(item);
-    previewClip.disabled = !canEditClip(item) || !hasClipText(item) || (!currentClip.ok && item.status !== 'invalid');
+    previewClip.disabled = !canPreviewClipNow(item);
     previewClip.addEventListener('click', () => {
       const clip = clipPayload(item);
       if (!clip.ok) {
@@ -1452,13 +1493,7 @@
     clipDownload.className = 'preview-clip';
     clipDownload.textContent = 'clip';
     clipDownload.title = 'download this clip';
-    clipDownload.disabled = (
-      !canEditClip(item) ||
-      !hasClipText(item) ||
-      !currentClip.ok ||
-      groupRunning ||
-      activeCount() >= MAX_ACTIVE_JOBS
-    );
+    clipDownload.disabled = !canDownloadClipNow(item);
     clipDownload.addEventListener('click', () => {
       const clip = clipPayload(item);
       if (!clip.ok) {
@@ -1492,8 +1527,8 @@
         startInput.value = start;
         endInput.value = end;
         clearClipValidation(item);
-        previewClip.disabled = false;
-        clipDownload.disabled = groupRunning || activeCount() >= MAX_ACTIVE_JOBS;
+        previewClip.disabled = !canPreviewClipNow(item);
+        clipDownload.disabled = !canDownloadClipNow(item);
         updateControls();
       },
       onChangeEnd: () => {
@@ -1522,6 +1557,11 @@
   }
 
   function render() {
+    if (clipDragActive) {
+      renderQueued = true;
+      return;
+    }
+    renderQueued = false;
     const reusableVideos = new Map();
     for (const row of jobsList.querySelectorAll('.job[data-local-id]')) {
       const video = row.querySelector('.clip-preview-player');
@@ -1543,6 +1583,7 @@
       const source = sourceForUrl(item.url);
       const icon = document.createElement('span');
       icon.className = 'site-icon';
+      icon.setAttribute('role', 'img');
       icon.title = sourceName(source);
       icon.setAttribute('aria-label', sourceName(source));
       icon.append(iconForSource(source));
@@ -1576,7 +1617,7 @@
       downloadOne.textContent = '↓';
       downloadOne.title = singleDownloadTitle(active);
       downloadOne.disabled = !canStartSingleDownload(item, active);
-      downloadOne.setAttribute('aria-label', 'download this video');
+      downloadOne.setAttribute('aria-label', item.format === 'audio' ? 'download this track' : 'download this video');
       downloadOne.addEventListener('click', () => startSingleItem(item));
 
       const remove = document.createElement('button');
@@ -1585,15 +1626,16 @@
       remove.classList.toggle('cancel-active', isActive(item));
       remove.textContent = '×';
       remove.title = isActive(item) ? 'cancel this download' : 'remove';
-      remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued video');
+      remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued item');
       remove.addEventListener('click', () => removeItem(item));
 
-      controls.append(clipToggle, downloadOne, remove);
+      if (item.format !== 'audio') controls.append(clipToggle);
+      controls.append(downloadOne, remove);
       top.append(title, controls);
 
       row.append(top);
 
-      if (canEditClip(item) && (item.clipOpen || hasClipText(item))) {
+      if (canEditClip(item) && item.clipOpen) {
         row.append(renderClipPanel(item, reusableVideos.get(String(item.localId)) || null));
       }
 
@@ -1621,15 +1663,27 @@
     updateControls();
   }
 
-  function queueItem(url, selectedFormat = 'mp4', initialTitle = null, clipStart = '', clipEnd = '') {
-    const linkedClip = clipRangeFromUrl(url);
-    const start = clipStart || (linkedClip?.start !== null && linkedClip?.start !== undefined ? formatClipTime(linkedClip.start) : '');
-    const end = clipEnd || (linkedClip?.end !== null && linkedClip?.end !== undefined ? formatClipTime(linkedClip.end) : '');
+  function queueItem(
+    url,
+    selectedFormat = 'mp4',
+    initialTitle = null,
+    clipStart = '',
+    clipEnd = '',
+    playlist = null,
+    renderNow = true,
+  ) {
+    const linkedClip = selectedFormat === 'audio' ? null : clipRangeFromUrl(url);
+    const start = selectedFormat === 'audio'
+      ? ''
+      : clipStart || (linkedClip?.start !== null && linkedClip?.start !== undefined ? formatClipTime(linkedClip.start) : '');
+    const end = selectedFormat === 'audio'
+      ? ''
+      : clipEnd || (linkedClip?.end !== null && linkedClip?.end !== undefined ? formatClipTime(linkedClip.end) : '');
     const item = {
       localId: nextLocalId,
       url,
       title: initialTitle,
-      titleLoading: !initialTitle,
+      titleLoading: !initialTitle && selectedFormat !== 'audio',
       duration: null,
       thumbnail: null,
       filmstrip: null,
@@ -1641,6 +1695,7 @@
       clipPreviewReplayTimer: null,
       clipZoom: 1,
       format: selectedFormat,
+      playlist,
       status: 'queued',
       clipStart: start,
       clipEnd: end,
@@ -1655,8 +1710,8 @@
     };
     nextLocalId += 1;
     items.push(item);
-    if (!initialTitle) item.metadataPromise = loadTitle(item);
-    render();
+    if (!initialTitle && selectedFormat !== 'audio') item.metadataPromise = loadTitle(item);
+    if (renderNow) render();
     return item;
   }
 
@@ -1676,14 +1731,16 @@
       if (response.ok) {
         item.duration = clipDurationFromMetadata(data);
         item.thumbnail = safeThumbnailUrl(data.thumbnail) || null;
-        if (data.clip && !hasClipText(item)) {
-          item.clipStart = formatClipTime(data.clip.start);
-          item.clipEnd = formatClipTime(data.clip.end);
-          item.clipOpen = true;
-        } else if (hasClipText(item)) {
-          const completed = completeClipText(item.clipStart, item.clipEnd, item.duration);
-          item.clipStart = completed.start;
-          item.clipEnd = completed.end;
+        if (item.format !== 'audio') {
+          if (data.clip && !hasClipText(item)) {
+            item.clipStart = formatClipTime(data.clip.start);
+            item.clipEnd = formatClipTime(data.clip.end);
+            item.clipOpen = true;
+          } else if (hasClipText(item)) {
+            const completed = completeClipText(item.clipStart, item.clipEnd, item.duration);
+            item.clipStart = completed.start;
+            item.clipEnd = completed.end;
+          }
         }
       }
     } catch {
@@ -1875,17 +1932,79 @@
     inputClipPreviewReplayTimer = null;
   }
 
-  function queueInput() {
+  async function queueInput() {
+    if (inputResolving) return [];
     const urls = urlInput.value.trim().split(/\s+/).filter(Boolean);
     if (urls.length === 0) return [];
     const clipStart = inputClipStart.value.trim();
     const clipEnd = inputClipEnd.value.trim();
     const queued = [];
-    for (const url of urls) queued.push(queueItem(url, 'mp4', null, clipStart, clipEnd));
+    const failedUrls = [];
+    const resolveToken = inputResolveToken + 1;
+    inputResolveToken = resolveToken;
+    let lastError = null;
+
     urlInput.value = '';
     resetInputClip();
-    setStatus('');
+    inputResolving = urls.some((url) => sourceForUrl(url) === 'soundcloud');
+    if (inputResolving) setStatus('loading SoundCloud tracks');
     render();
+
+    try {
+      for (const url of urls) {
+        if (sourceForUrl(url) !== 'soundcloud') {
+          queued.push(queueItem(url, 'mp4', null, clipStart, clipEnd, null, false));
+          continue;
+        }
+
+        try {
+          const response = await fetch('/api/soundcloud', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ url }),
+          });
+          let data = {};
+          try {
+            data = await response.json();
+          } catch {}
+          if (resolveToken !== inputResolveToken) return queued;
+          if (!response.ok) throw new Error(data.error || 'could not load SoundCloud tracks');
+          if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
+            throw new Error('SoundCloud returned no tracks');
+          }
+
+          const count = data.tracks.length;
+          data.tracks.forEach((track, index) => {
+            if (!track || typeof track.url !== 'string') return;
+            const playlist = count > 1 ? { index: index + 1, count } : null;
+            queued.push(queueItem(
+              track.url,
+              'audio',
+              typeof track.title === 'string' ? track.title : null,
+              '',
+              '',
+              playlist,
+              false,
+            ));
+          });
+        } catch (error) {
+          failedUrls.push(url);
+          lastError = error instanceof Error && error.message
+            ? error.message
+            : 'could not load SoundCloud tracks';
+        }
+      }
+    } finally {
+      if (resolveToken === inputResolveToken) {
+        inputResolving = false;
+        if (failedUrls.length > 0) {
+          const currentInput = urlInput.value.trim();
+          urlInput.value = [...failedUrls, currentInput].filter(Boolean).join(' ');
+        }
+        setStatus(lastError || '', Boolean(lastError));
+        render();
+      }
+    }
     return queued;
   }
 
@@ -1937,6 +2056,7 @@
     setStatus('');
     const body = { url: item.url, format: item.format };
     if (clip.clip) body.clip = clip.clip;
+    if (item.playlist) body.playlist = item.playlist;
 
     let data;
     try {
@@ -2078,6 +2198,8 @@
 
   function cancelAllDownloads() {
     groupRunning = false;
+    inputResolveToken += 1;
+    inputResolving = false;
     const cancelRequests = [];
     for (const item of items) {
       if (item.status === 'queued' || isActive(item)) {
@@ -2103,7 +2225,7 @@
   });
 
   addButton.addEventListener('click', () => {
-    queueInput();
+    void queueInput();
   });
 
   clipInputButton.addEventListener('click', () => {
@@ -2146,7 +2268,7 @@
     }
   });
 
-  inputClipDownloadButton.addEventListener('click', () => {
+  inputClipDownloadButton.addEventListener('click', async () => {
     const clip = clipPayload({
       clipStart: inputClipStart.value,
       clipEnd: inputClipEnd.value,
@@ -2156,7 +2278,7 @@
       setStatus(clip.error, true);
       return;
     }
-    const queued = queueInput();
+    const queued = await queueInput();
     for (const item of queued) startSingleItem(item);
   });
 
@@ -2178,9 +2300,9 @@
     urlInput.focus();
   });
 
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    queueInput();
+    await queueInput();
     reactivateCanceledItems();
     groupRunning = true;
     runQueue();
@@ -2203,8 +2325,11 @@
 
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    queueInput();
+    void queueInput();
   });
+
+  window.addEventListener('pointerup', endClipDrag);
+  window.addEventListener('pointercancel', endClipDrag);
 
   urlInput.addEventListener('input', () => {
     resetInputMetadataIfUrlChanged();

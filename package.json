@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/server.ts",
+    "start:wsl": "DOMINATOR_HOST=0.0.0.0 tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

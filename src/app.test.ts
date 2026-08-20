@@ -27,8 +27,29 @@ describe('POST /api/metadata', () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(
-      'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
+      'only YouTube, Twitter/X, Instagram, TikTok, Reddit, and SoundCloud URLs are supported',
     );
+  });
+});
+
+describe('POST /api/soundcloud', () => {
+  it('rejects bodies that are not JSON', async () => {
+    const res = await app.request('/api/soundcloud', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-SoundCloud URLs before spawning yt-dlp', async () => {
+    const res = await app.request('/api/soundcloud', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://youtu.be/x' }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('only SoundCloud URLs can be expanded here');
   });
 });
 
@@ -50,7 +71,7 @@ describe('POST /api/previews', () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(
-      'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
+      'only YouTube, Twitter/X, Instagram, TikTok, Reddit, and SoundCloud URLs are supported',
     );
   });
 });
@@ -69,7 +90,7 @@ describe('POST /api/jobs', () => {
     const res = await postJob(JSON.stringify({ url: 'https://example.com/v', format: 'mp4' }));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(
-      'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
+      'only YouTube, Twitter/X, Instagram, TikTok, Reddit, and SoundCloud URLs are supported',
     );
   });
 

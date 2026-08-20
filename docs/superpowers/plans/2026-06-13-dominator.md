@@ -151,6 +151,14 @@ Added Reddit post, short-link, and hosted-video URLs to the closed host
 allowlist, with matching validation coverage, UI source identification, and
 documentation.
 
+### SoundCloud bulk audio follow-up (2026-08-01)
+
+Added SoundCloud track and playlist URLs to the closed host allowlist. The UI
+expands playlists into individual queue rows through a bounded flat-playlist
+lookup, downloads each row with yt-dlp `bestaudio/best` without conversion,
+and prefixes playlist filenames with their source order. SoundCloud playlists
+are capped at 500 tracks and use the existing seven-job download limit.
+
 ## File structure
 
 ```
