@@ -7,7 +7,7 @@ error message.
 
 ## Requirements
 
-- Node >= 20 and pnpm
+- Node >= 22 and pnpm
 - `yt-dlp` and `ffmpeg` on PATH
 
 ```bash
@@ -22,6 +22,15 @@ If downloads start failing with extraction errors, update yt-dlp first
 (`yt-dlp -U` or your package manager). Supported sites change their media
 delivery regularly, so keeping yt-dlp current is the first troubleshooting
 step.
+
+YouTube extraction also needs a JavaScript runtime. The app passes its current
+Node executable to yt-dlp, so use Node 22 or newer. If YouTube returns HTTP 403,
+check both versions before retrying:
+
+```bash
+node --version
+yt-dlp --version
+```
 
 ## SoundCloud playlists
 

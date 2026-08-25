@@ -42,7 +42,8 @@ SoundCloud playlist into best-quality audio tracks.
 
 ## Prerequisites
 
-- Node >= 20 and pnpm.
+- Node >= 22 and pnpm. The app passes its Node executable to yt-dlp as the
+  JavaScript runtime for YouTube extraction.
 - `yt-dlp` and `ffmpeg` on PATH (one brew/apt install each). The server checks
   for both at startup and exits with a clear message if missing.
 
@@ -141,7 +142,8 @@ be interpreted by a shell.
   the container or codecs cannot be copied into the requested format. This
   avoids yt-dlp's fragile remote section downloader path.
 - Common yt-dlp flags: `--no-playlist`, `--progress`, `--newline`,
-  `-o <tempdir>/%(title)s.%(ext)s`.
+  `-o <tempdir>/%(title)s.%(ext)s`. YouTube calls also pass `--js-runtimes`
+  with the current Node executable so yt-dlp can solve player challenges.
 - Preview generation uses a low-resolution yt-dlp format capped by
   `--max-filesize 80M`, then ffmpeg samples 5 frames into one JPEG sprite for
   the timeline background. At most 2 preview jobs run at once.

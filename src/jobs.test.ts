@@ -73,6 +73,8 @@ describe('clip args', () => {
     );
 
     expect(args).toContain('--ignore-config');
+    expect(args).toContain('--js-runtimes');
+    expect(args).toContain(`node:${process.execPath}`);
     expect(args).not.toContain('--download-sections');
     expect(args).toContain('/tmp/dominator-test/%(title)s.%(ext)s');
     expect(args.at(-2)).toBe('--');

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
+import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const METADATA_TIMEOUT_MS = 15_000;
 export const MAX_RUNNING_METADATA = 7;
@@ -128,6 +129,7 @@ function releaseMetadataSlot(): void {
 export function buildMetadataYtDlpArgs(url: string): string[] {
   return [
     '--ignore-config',
+    ...youtubeJsRuntimeArgs(url),
     '--skip-download',
     '--no-playlist',
     '--no-warnings',

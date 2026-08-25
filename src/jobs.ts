@@ -8,6 +8,7 @@ import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
 import type { JobRequest } from './validate';
+import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const TEMP_PREFIX = 'dominator-';
 
@@ -103,6 +104,7 @@ export function buildFfmpegReencodeClipArgs(
 export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
   return [
     '--ignore-config',
+    ...youtubeJsRuntimeArgs(request.url),
     ...FORMAT_ARGS[request.format],
     '--no-playlist',
     '--progress',

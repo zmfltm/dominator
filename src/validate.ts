@@ -1,9 +1,13 @@
-const ALLOWED_HOSTS = new Set([
+const YOUTUBE_HOSTS = new Set([
   'youtube.com',
   'www.youtube.com',
   'm.youtube.com',
   'music.youtube.com',
   'youtu.be',
+]);
+
+const ALLOWED_HOSTS = new Set([
+  ...YOUTUBE_HOSTS,
   'twitter.com',
   'www.twitter.com',
   'mobile.twitter.com',
@@ -116,6 +120,18 @@ export function parseJobRequest(body: unknown): ParseResult {
       ...(parsedPlaylist.value ? { playlist: parsedPlaylist.value } : {}),
     },
   };
+}
+
+export function isYouTubeUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      YOUTUBE_HOSTS.has(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function isSoundCloudUrl(value: string): boolean {

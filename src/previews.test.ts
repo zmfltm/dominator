@@ -16,6 +16,8 @@ describe('preview args', () => {
     const args = buildPreviewYtDlpArgs(url, '/tmp/dominator-preview-test');
 
     expect(args).toContain('--ignore-config');
+    expect(args).toContain('--js-runtimes');
+    expect(args).toContain(`node:${process.execPath}`);
     expect(args).toContain('--max-filesize');
     expect(args).toContain('/tmp/dominator-preview-test/source.%(ext)s');
     expect(args.at(-2)).toBe('--');
@@ -27,6 +29,8 @@ describe('preview args', () => {
     const args = buildPreviewDurationArgs(url);
 
     expect(args).toContain('--ignore-config');
+    expect(args).toContain('--js-runtimes');
+    expect(args).toContain(`node:${process.execPath}`);
     expect(args).toContain('--skip-download');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);

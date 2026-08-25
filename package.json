@@ -2,6 +2,9 @@
   "name": "dominator",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "tsx src/server.ts",
     "start:wsl": "DOMINATOR_HOST=0.0.0.0 tsx src/server.ts",

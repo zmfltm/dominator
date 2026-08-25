@@ -71,6 +71,8 @@ describe('buildMetadataYtDlpArgs', () => {
     const args = buildMetadataYtDlpArgs(url);
 
     expect(args).toContain('--ignore-config');
+    expect(args).toContain('--js-runtimes');
+    expect(args).toContain(`node:${process.execPath}`);
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
   });
