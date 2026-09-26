@@ -23,7 +23,8 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 ## Project shape
 
 - `public/index.html`: entire frontend. No build step, no frontend framework.
-- `public/logo.png`: tiny centered logo, cropped from the user-provided screenshot.
+- `public/logo.png`: original logo and favicon, cropped from the user-provided screenshot.
+- `public/logo-hd.png`: cleaned high-resolution logo used in the page header.
 - `public/fonts/`: vendored Ioskeley Mono web font and license.
 - `src/validate.ts`: request and supported-host validation, including Reddit.
 - `src/progress.ts`: yt-dlp progress parser.
