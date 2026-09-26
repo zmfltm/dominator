@@ -60,6 +60,10 @@ describe('parseVideoMetadataOutput', () => {
     });
   });
 
+  it.each(['null', '[]', '42', 'true'])('rejects non-object metadata %s', (output) => {
+    expect(parseVideoMetadataOutput(output)).toBeUndefined();
+  });
+
   it('rejects malformed output instead of shifting optional fields', () => {
     expect(parseVideoMetadataOutput('Example Video\n\n30\n45')).toBeUndefined();
   });
@@ -71,6 +75,8 @@ describe('buildMetadataYtDlpArgs', () => {
     const args = buildMetadataYtDlpArgs(url);
 
     expect(args).toContain('--ignore-config');
+    expect(args).toContain('--js-runtimes');
+    expect(args).toContain(`node:${process.execPath}`);
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
   });

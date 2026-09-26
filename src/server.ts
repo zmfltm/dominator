@@ -18,6 +18,12 @@ function checkBinary(name: string, versionArgs: string[]): void {
 checkBinary('yt-dlp', ['--version']);
 checkBinary('ffmpeg', ['-version']);
 
+const hostname = process.env.DOMINATOR_HOST ?? '127.0.0.1';
+if (hostname !== '127.0.0.1' && hostname !== '0.0.0.0') {
+  console.error("DOMINATOR_HOST must be '127.0.0.1' or '0.0.0.0'.");
+  process.exit(1);
+}
+
 // Reclaim disk from downloads the user never collected; without this a
 // long-running server (the startup sweep never fires) accumulates one full
 // video file per abandoned job.
@@ -27,12 +33,14 @@ setInterval(() => {
   reapStalePreviews().catch((err) => console.error('stale preview reap failed:', err));
 }, REAP_INTERVAL_MS).unref();
 
-serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 3000 }, async (info) => {
+serve({ fetch: app.fetch, hostname, port: 3000 }, async (info) => {
   // Bind first so a second instance cannot erase the running instance's temp files.
   try {
     await sweepLeftoverDirs();
   } catch (err) {
     console.error('startup temp sweep failed:', err);
   }
-  console.log(`dominator ready: http://127.0.0.1:${info.port}`);
+  console.log(
+    `dominator ready: http://127.0.0.1:${info.port} (listening on ${hostname})`,
+  );
 });

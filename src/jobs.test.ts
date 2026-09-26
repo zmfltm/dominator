@@ -73,10 +73,43 @@ describe('clip args', () => {
     );
 
     expect(args).toContain('--ignore-config');
+    expect(args).toContain('--js-runtimes');
+    expect(args).toContain(`node:${process.execPath}`);
     expect(args).not.toContain('--download-sections');
     expect(args).toContain('/tmp/dominator-test/%(title)s.%(ext)s');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
+  });
+
+  it('converts signed Discord attachments to MP3 and preserves the signature', () => {
+    const url = 'https://cdn.discordapp.com/attachments/123/456/voice-message.ogg?ex=abc&is=def&hm=signature';
+    const args = buildYtDlpArgs({ url, format: 'mp3' }, '/tmp/dominator-test');
+    expect(args).toContain('-x');
+    expect(args[args.indexOf('--audio-format') + 1]).toBe('mp3');
+    expect(args[args.indexOf('--audio-quality') + 1]).toBe('0');
+    expect(args.slice(-2)).toEqual(['--', url]);
+  });
+
+  it('keeps SoundCloud audio in the best source format and prefixes playlist order', () => {
+    const url = 'https://soundcloud.com/artist/track';
+    const args = buildYtDlpArgs(
+      { url, format: 'audio', playlist: { index: 3, count: 12 } },
+      '/tmp/dominator-test',
+    );
+
+    expect(args).toContain('bestaudio/best');
+    expect(args).not.toContain('--extract-audio');
+    expect(args).toContain('--embed-thumbnail');
+    expect(args).toContain('/tmp/dominator-test/03 - %(title)s.%(ext)s');
+    expect(args.at(-2)).toBe('--');
+    expect(args.at(-1)).toBe(url);
+  });
+
+  it('does not embed thumbnails for non-SoundCloud downloads', () => {
+    const url = 'https://youtu.be/dQw4w9WgXcQ';
+    const args = buildYtDlpArgs({ url, format: 'mp4' }, '/tmp/dominator-test');
+
+    expect(args).not.toContain('--embed-thumbnail');
   });
 
   it('builds stream-copy ffmpeg args for clipped MP4 output', () => {

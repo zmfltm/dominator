@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
+import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const METADATA_TIMEOUT_MS = 15_000;
 export const MAX_RUNNING_METADATA = 7;
@@ -42,6 +43,7 @@ export function parseVideoMetadataOutput(output: string): VideoMetadata | undefi
   } catch {
     return undefined;
   }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
   if (typeof data.title !== 'string' || data.title.trim().length === 0) return undefined;
 
   const duration = parseOptionalSeconds(data.duration);
@@ -128,6 +130,7 @@ function releaseMetadataSlot(): void {
 export function buildMetadataYtDlpArgs(url: string): string[] {
   return [
     '--ignore-config',
+    ...youtubeJsRuntimeArgs(url),
     '--skip-download',
     '--no-playlist',
     '--no-warnings',

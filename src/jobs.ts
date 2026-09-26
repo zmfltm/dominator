@@ -7,7 +7,8 @@ import { join, parse } from 'node:path';
 import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
-import type { JobRequest } from './validate';
+import { isSoundCloudUrl, type JobRequest } from './validate';
+import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const TEMP_PREFIX = 'dominator-';
 
@@ -44,6 +45,7 @@ let startingJobs = 0;
 const FORMAT_ARGS: Record<JobRequest['format'], string[]> = {
   mp4: ['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b'],
   mp3: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
+  audio: ['-f', 'bestaudio/best'],
 };
 
 type Clip = NonNullable<JobRequest['clip']>;
@@ -102,15 +104,23 @@ export function buildFfmpegReencodeClipArgs(
 export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
   return [
     '--ignore-config',
+    ...youtubeJsRuntimeArgs(request.url),
     ...FORMAT_ARGS[request.format],
+    ...(isSoundCloudUrl(request.url) ? ['--embed-thumbnail'] : []),
     '--no-playlist',
     '--progress',
     '--newline',
     '-o',
-    join(dir, '%(title)s.%(ext)s'),
+    join(dir, `${playlistFilenamePrefix(request)}%(title)s.%(ext)s`),
     '--',
     request.url,
   ];
+}
+
+function playlistFilenamePrefix(request: JobRequest): string {
+  if (!request.playlist) return '';
+  const width = Math.max(2, String(request.playlist.count).length);
+  return `${String(request.playlist.index).padStart(width, '0')} - `;
 }
 
 function ffmpegBaseClipArgs(inputPath: string, clip: Clip): string[] {

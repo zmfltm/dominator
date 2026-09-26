@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
+import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const PREVIEW_TEMP_PREFIX = 'dominator-preview-';
 export const PREVIEW_TTL_MS = 60 * 60 * 1000;
@@ -72,6 +73,7 @@ export function previewStatusBody(preview: Preview): Record<string, unknown> {
 export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
   return [
     '--ignore-config',
+    ...youtubeJsRuntimeArgs(url),
     '-f',
     'worst[height<=360][ext=mp4]/worst[height<=360]/worstvideo*[height<=360][ext=mp4]+worstaudio[ext=m4a]/worstvideo*[height<=360]+worstaudio/worst',
     '--merge-output-format',
@@ -90,6 +92,7 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
 export function buildPreviewDurationArgs(url: string): string[] {
   return [
     '--ignore-config',
+    ...youtubeJsRuntimeArgs(url),
     '--skip-download',
     '--no-playlist',
     '--no-warnings',

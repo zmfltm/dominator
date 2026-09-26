@@ -92,6 +92,67 @@ describe('parseJobRequest', () => {
     expect(result3.ok).toBe(true);
   });
 
+  it('accepts SoundCloud tracks and playlist positions with best audio', () => {
+    expect(parseJobRequest({
+      url: 'https://soundcloud.com/artist/track',
+      format: 'audio',
+    })).toEqual({
+      ok: true,
+      value: { url: 'https://soundcloud.com/artist/track', format: 'audio' },
+    });
+
+    expect(parseJobRequest({
+      url: 'https://www.soundcloud.com/artist/track',
+      format: 'audio',
+      playlist: { index: 3, count: 12 },
+    })).toEqual({
+      ok: true,
+      value: {
+        url: 'https://www.soundcloud.com/artist/track',
+        format: 'audio',
+        playlist: { index: 3, count: 12 },
+      },
+    });
+
+    expect(parseJobRequest({
+      url: 'https://on.soundcloud.com/short-link',
+      format: 'audio',
+    }).ok).toBe(true);
+
+    expect(parseJobRequest({
+      url: 'https://api-v2.soundcloud.com/tracks/123',
+      format: 'audio',
+    }).ok).toBe(true);
+  });
+
+  it.each(['cdn.discordapp.com', 'media.discordapp.net'])('accepts signed Discord audio from %s without changing the URL', (host) => {
+    const url = `https://${host}/attachments/123/456/voice-message.ogg?ex=abcdef&is=123456&hm=signed`;
+    expect(parseJobRequest({ url, format: 'mp3' })).toEqual({
+      ok: true, value: { url, format: 'mp3' },
+    });
+  });
+
+  it.each([
+    'https://cdn.discordapp.com.evil.example/attachments/123/456/voice.ogg',
+    'https://cdn.discordapp.com/avatars/123/voice.ogg',
+    'https://cdn.discordapp.com/attachments/123/456/page.html',
+    'http://cdn.discordapp.com/attachments/123/456/voice.ogg',
+    'https://cdn.discordapp.com:8443/attachments/123/456/voice.ogg',
+    'https://user:pass@cdn.discordapp.com/attachments/123/456/voice.ogg',
+  ])('rejects unsafe or non-media Discord URL %s', (url) => {
+    expect(parseJobRequest({ url, format: 'mp3' }).ok).toBe(false);
+  });
+
+  it('explains how to replace a Discord message link', () => {
+    expect(parseJobRequest({
+      url: 'https://discord.com/channels/352908185511788554/835522047874433074/1552815306844536882',
+      format: 'mp3',
+    })).toEqual({
+      ok: false,
+      error: 'Discord message links are not downloadable; copy the audio attachment link instead',
+    });
+  });
+
   it('accepts a valid clip range', () => {
     const result = parseJobRequest({
       url: 'https://youtu.be/dQw4w9WgXcQ',
@@ -124,7 +185,7 @@ describe('parseJobRequest', () => {
     const result = parseJobRequest({ url: 'https://vimeo.com/12345', format: 'mp4' });
     expect(result).toEqual({
       ok: false,
-      error: 'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
+      error: 'only YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord audio attachment URLs are supported',
     });
   });
 
@@ -146,6 +207,12 @@ describe('parseJobRequest', () => {
       format: 'mp4',
     });
     expect(result3.ok).toBe(false);
+
+    const result4 = parseJobRequest({
+      url: 'https://soundcloud.com.evil.example/artist/track',
+      format: 'audio',
+    });
+    expect(result4.ok).toBe(false);
   });
 
   it('rejects non-http(s) schemes', () => {
@@ -158,9 +225,35 @@ describe('parseJobRequest', () => {
     expect(result).toEqual({ ok: false, error: 'not a valid URL' });
   });
 
+  it('rejects best audio for non-SoundCloud URLs and invalid playlist positions', () => {
+    expect(parseJobRequest({ url: 'https://youtu.be/x', format: 'audio' })).toEqual({
+      ok: false,
+      error: 'best audio is only supported for SoundCloud URLs',
+    });
+    expect(parseJobRequest({
+      url: 'https://soundcloud.com/artist/track',
+      format: 'audio',
+      playlist: { index: 13, count: 12 },
+    })).toEqual({
+      ok: false,
+      error: 'playlist index and count must be valid integers up to 500',
+    });
+  });
+
+  it('rejects clips for best-quality SoundCloud audio', () => {
+    expect(parseJobRequest({
+      url: 'https://soundcloud.com/artist/track',
+      format: 'audio',
+      clip: { start: 1, end: 2 },
+    })).toEqual({
+      ok: false,
+      error: 'best-quality SoundCloud audio does not support clips',
+    });
+  });
+
   it('rejects unknown formats', () => {
     const result = parseJobRequest({ url: 'https://youtu.be/x', format: 'wav' });
-    expect(result).toEqual({ ok: false, error: "format must be 'mp4' or 'mp3'" });
+    expect(result).toEqual({ ok: false, error: "format must be 'mp4', 'mp3', or 'audio'" });
   });
 
   it('rejects non-object bodies', () => {

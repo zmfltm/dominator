@@ -27,8 +27,29 @@ describe('POST /api/metadata', () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(
-      'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
+      'only YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord audio attachment URLs are supported',
     );
+  });
+});
+
+describe('POST /api/soundcloud', () => {
+  it('rejects bodies that are not JSON', async () => {
+    const res = await app.request('/api/soundcloud', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-SoundCloud URLs before spawning yt-dlp', async () => {
+    const res = await app.request('/api/soundcloud', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://youtu.be/x' }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('only SoundCloud URLs can be expanded here');
   });
 });
 
@@ -50,7 +71,7 @@ describe('POST /api/previews', () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(
-      'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
+      'only YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord audio attachment URLs are supported',
     );
   });
 });
@@ -69,7 +90,7 @@ describe('POST /api/jobs', () => {
     const res = await postJob(JSON.stringify({ url: 'https://example.com/v', format: 'mp4' }));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(
-      'only YouTube, Twitter/X, Instagram, TikTok, and Reddit URLs are supported',
+      'only YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord audio attachment URLs are supported',
     );
   });
 
@@ -108,6 +129,18 @@ describe('API request security', () => {
       body: JSON.stringify({ url: 'https://youtu.be/x' }),
     });
     expect(res.status).toBe(415);
+  });
+
+  it.each([false, true])('limits actual body bytes without Content-Length (chunked: %s)', async (chunked) => {
+    const headers = new Headers({ 'content-type': 'application/json' });
+    if (chunked) headers.set('transfer-encoding', 'chunked');
+    const res = await app.request('/api/jobs', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ url: 'x'.repeat(20 * 1024), format: 'mp3' }),
+    });
+    expect(res.status).toBe(413);
+    expect((await res.json()).error).toBe('request body is too large');
   });
 
   it('rejects oversized API bodies', async () => {
@@ -152,5 +185,20 @@ describe('job lookup', () => {
   it('404s on source video for unknown previews', async () => {
     const res = await app.request('/api/previews/nope/source');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Discord message links', () => {
+  it.each(['/api/jobs', '/api/metadata', '/api/previews'])('rejects message URLs at %s before starting work', async (path) => {
+    const response = await app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://discord.com/channels/352908185511788554/835522047874433074/1552815306844536882',
+        format: 'mp3',
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain('copy the audio attachment link');
   });
 });
