@@ -125,6 +125,34 @@ describe('parseJobRequest', () => {
     }).ok).toBe(true);
   });
 
+  it.each(['cdn.discordapp.com', 'media.discordapp.net'])('accepts signed Discord audio from %s without changing the URL', (host) => {
+    const url = `https://${host}/attachments/123/456/voice-message.ogg?ex=abcdef&is=123456&hm=signed`;
+    expect(parseJobRequest({ url, format: 'mp3' })).toEqual({
+      ok: true, value: { url, format: 'mp3' },
+    });
+  });
+
+  it.each([
+    'https://cdn.discordapp.com.evil.example/attachments/123/456/voice.ogg',
+    'https://cdn.discordapp.com/avatars/123/voice.ogg',
+    'https://cdn.discordapp.com/attachments/123/456/page.html',
+    'http://cdn.discordapp.com/attachments/123/456/voice.ogg',
+    'https://cdn.discordapp.com:8443/attachments/123/456/voice.ogg',
+    'https://user:pass@cdn.discordapp.com/attachments/123/456/voice.ogg',
+  ])('rejects unsafe or non-media Discord URL %s', (url) => {
+    expect(parseJobRequest({ url, format: 'mp3' }).ok).toBe(false);
+  });
+
+  it('explains how to replace a Discord message link', () => {
+    expect(parseJobRequest({
+      url: 'https://discord.com/channels/352908185511788554/835522047874433074/1552815306844536882',
+      format: 'mp3',
+    })).toEqual({
+      ok: false,
+      error: 'Discord message links are not downloadable; copy the audio attachment link instead',
+    });
+  });
+
   it('accepts a valid clip range', () => {
     const result = parseJobRequest({
       url: 'https://youtu.be/dQw4w9WgXcQ',
@@ -157,7 +185,7 @@ describe('parseJobRequest', () => {
     const result = parseJobRequest({ url: 'https://vimeo.com/12345', format: 'mp4' });
     expect(result).toEqual({
       ok: false,
-      error: 'only YouTube, Twitter/X, Instagram, TikTok, Reddit, and SoundCloud URLs are supported',
+      error: 'only YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord audio attachment URLs are supported',
     });
   });
 

@@ -60,6 +60,10 @@ describe('parseVideoMetadataOutput', () => {
     });
   });
 
+  it.each(['null', '[]', '42', 'true'])('rejects non-object metadata %s', (output) => {
+    expect(parseVideoMetadataOutput(output)).toBeUndefined();
+  });
+
   it('rejects malformed output instead of shifting optional fields', () => {
     expect(parseVideoMetadataOutput('Example Video\n\n30\n45')).toBeUndefined();
   });

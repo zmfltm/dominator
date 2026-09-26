@@ -1,5 +1,6 @@
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -42,11 +43,10 @@ app.use('/api/*', async (c, next) => {
     return c.json({ error: 'content-type must be application/json' }, 415);
   }
 
-  const contentLength = Number(c.req.header('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_API_BODY_BYTES) {
-    return c.json({ error: 'request body is too large' }, 413);
-  }
-  return next();
+  return bodyLimit({
+    maxSize: MAX_API_BODY_BYTES,
+    onError: (context) => context.json({ error: 'request body is too large' }, 413),
+  })(c, next);
 });
 
 function hasSameHost(origin: string, host: string): boolean {

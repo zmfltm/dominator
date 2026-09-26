@@ -18,6 +18,12 @@ SoundCloud playlist into best-quality audio tracks.
 > Amended 2026-08-01: added SoundCloud track and playlist expansion with
 > source-format best audio downloads.
 
+> Amended 2026-09-25: Discord audio attachment links from `cdn.discordapp.com`
+> and `media.discordapp.net` queue as MP3. Only HTTPS attachment paths with
+> numeric channel/attachment IDs and supported audio/media extensions are
+> accepted. Signed query parameters are preserved. Discord message links return
+> instructions to copy the attachment link. Discord rows hide video clip controls.
+
 ## Goals
 
 - Paste video URLs from supported sites and queue MP4 downloads.
@@ -37,7 +43,7 @@ SoundCloud playlist into best-quality audio tracks.
 - No quality picker table or persistent history.
 - No login or cookie support: public posts and tracks only. Login-gated content
   and account-only SoundCloud quality fail or remain unavailable.
-- No support for sites beyond the six listed services; the host allowlist stays
+- No support for sites beyond the listed services; the host allowlist stays
   closed.
 
 ## Prerequisites
@@ -107,7 +113,7 @@ UI: vanilla HTML/CSS/JS in a single file.
   Spawns yt-dlp writing into a per-job temp dir. Returns `{ jobId }`.
   Rejects with 429 once 7 jobs are already running or starting. Rejects
   with 400 and the message
-  `only YouTube, Twitter/X, Instagram, TikTok, Reddit, and SoundCloud URLs are supported`
+  `only YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord audio attachment URLs are supported`
   for unknown hosts.
 - `GET /api/jobs/:id/events`. SSE stream of progress events
   `{ percent, stage, downloadedBytes?, totalBytes? }` parsed from yt-dlp
@@ -200,7 +206,8 @@ Pure black page, centered column:
   show a global queued-count status; the rows themselves are the queue.
   Progress and status text appear once a row starts running, including percent
   plus downloaded and total size when yt-dlp reports a total. Completed rows
-  stay short, fade and italicize the title, and hide progress/status.
+  stay short, fade and italicize the title, hide progress/status, and remove
+  the borders from their row-control buttons.
 - Errors render in red.
 
 ## Error handling

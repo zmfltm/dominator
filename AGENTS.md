@@ -38,6 +38,7 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 
 - Initial queued video downloads are MP4. SoundCloud tracks use best audio in the source container without conversion.
 - SoundCloud playlist links expand into one queue row per track and preserve playlist order in saved filenames.
+- Keep the UI flat with square corners. The idle page has no visible copy, helper text, or footer. Actions use angular SVG icons with accessible labels, including download. Use a restrained amber-on-black terminal palette.
 - The URL input is intentionally blank, with no placeholder text.
 - The search/input area should stay centered in the page and fixed in place as queue rows are added; rows grow downward underneath it.
 - Queued rows should be compact and show the fetched video title when available, falling back to the URL. Titles should wrap and use the full row width instead of truncating.
@@ -54,7 +55,7 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 - Starting one row must not auto-start the rest of the queue when that row finishes.
 - A clear button appears below the list when rows exist. Clearing also cancels active jobs.
 - The download button has a fixed width so it does not resize when it turns active-colored.
-- Completed rows should stay short, fade and italicize the title, and should not show progress/status or `convert to mp3`.
+- Completed rows should stay short, fade and italicize the title, hide progress/status and row-control borders, and should not show `convert to mp3`.
 
 ## Conventions
 

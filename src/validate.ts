@@ -6,8 +6,11 @@ const YOUTUBE_HOSTS = new Set([
   'youtu.be',
 ]);
 
+const DISCORD_ATTACHMENT_HOSTS = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
+
 const ALLOWED_HOSTS = new Set([
   ...YOUTUBE_HOSTS,
+  ...DISCORD_ATTACHMENT_HOSTS,
   'twitter.com',
   'www.twitter.com',
   'mobile.twitter.com',
@@ -99,8 +102,17 @@ export function parseJobRequest(body: unknown): ParseResult {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     return { ok: false, error: 'url must be http or https' };
   }
+  if (['discord.com', 'www.discord.com', 'ptb.discord.com', 'canary.discord.com', 'discordapp.com'].includes(parsed.hostname)) {
+    return { ok: false, error: 'Discord message links are not downloadable; copy the audio attachment link instead' };
+  }
+  if (DISCORD_ATTACHMENT_HOSTS.has(parsed.hostname) && (
+    parsed.protocol !== 'https:' || parsed.port || parsed.username || parsed.password ||
+    !/^\/attachments\/\d+\/\d+\/[^/]+\.(?:mp3|wav|ogg|oga|opus|m4a|aac|flac|webm|mp4)$/i.test(parsed.pathname)
+  )) {
+    return { ok: false, error: 'use a direct HTTPS Discord audio attachment link' };
+  }
   if (!ALLOWED_HOSTS.has(parsed.hostname)) {
-    return { ok: false, error: 'only YouTube, Twitter/X, Instagram, TikTok, Reddit, and SoundCloud URLs are supported' };
+    return { ok: false, error: 'only YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord audio attachment URLs are supported' };
   }
   if (format === 'audio' && !SOUNDCLOUD_HOSTS.has(parsed.hostname)) {
     return { ok: false, error: 'best audio is only supported for SoundCloud URLs' };

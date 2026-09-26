@@ -16,11 +16,13 @@
   }
   :root {
     --bg: #000;
-    --fg: #e8e8e8;
-    --dim: #8a8a8a;
-    --line: #303030;
-    --accent: #19c2d8;
-    --error: #ff4444;
+    --fg: oklch(0.88 0.035 75);
+    --dim: oklch(0.65 0.025 75);
+    --line: oklch(0.29 0.018 75);
+    --surface: #0c0c0c;
+    --muted-surface: #151515;
+    --accent: oklch(0.8 0.15 75);
+    --error: #ff8585;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -31,26 +33,39 @@
     min-height: 100vh;
   }
   main {
-    width: min(680px, 90vw);
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    width: min(680px, calc(100% - 64px));
     position: fixed;
-    top: 50%;
+    top: 50svh;
     left: 50%;
     transform: translate(-50%, -50%);
   }
-  .brand { display: flex; justify-content: center; transform: translateY(-0.4rem); }
-  .logo { width: 48px; height: auto; opacity: 0.95; }
+  .brand {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 32px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .logo {
+    width: 40px;
+    height: auto;
+    opacity: 0.85;
+  }
   .input-wrap { position: relative; }
   form {
     display: flex;
+    align-items: stretch;
+    min-height: 56px;
+    padding: 0;
     border: 1px solid var(--line);
-    transition: border-color 120ms ease, box-shadow 120ms ease;
+    border-radius: 0;
+    background: var(--surface);
   }
   form:focus-within {
-    border-color: #666;
-    box-shadow: 0 0 0 1px #171717;
+    border-color: var(--accent);
   }
   input {
     flex: 1;
@@ -79,23 +94,27 @@
     outline-offset: -2px;
   }
   form button {
-    padding: 0 0.85rem;
-    border-left: 1px solid var(--line);
+    min-height: 46px;
+    padding: 0 14px;
+    border-radius: 0;
+    white-space: nowrap;
   }
   #add,
   #clipInput { color: var(--fg); }
   #clipInput.active { color: var(--accent); }
-  #download { width: 7.25rem; }
+  #download {
+    width: 64px;
+    flex: 0 0 64px;
+    border-left: 1px solid var(--line);
+  }
   #clearText {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    right: calc(100% + 0.05rem);
-    border: 0;
+    top: 6px;
+    right: 100%;
+    width: 28px;
+    height: 44px;
     color: var(--dim);
-    font-size: 1rem;
-    min-width: 1rem;
-    padding: 0;
+    font-size: 20px;
   }
   #download.ready { background: var(--accent); color: #000; }
   button:disabled { color: var(--dim); cursor: not-allowed; }
@@ -145,34 +164,49 @@
   #cancel { color: var(--error); }
   [hidden] { display: none !important; }
   .status {
-    font-size: 0.7rem;
+    position: absolute;
+    top: calc(100% + 12px);
+    left: 0;
+    right: 0;
+    font-size: 12px;
+    line-height: 1.5;
     color: var(--dim);
-    letter-spacing: 0.08em;
-    min-height: 1em;
   }
   .status.error { color: var(--error); }
   .queue {
     position: absolute;
-    top: calc(100% + 0.75rem);
+    top: calc(100% + 40px);
     left: 0;
     right: 0;
-    max-height: calc(50vh - 1.25rem);
+    max-height: calc(50svh - 100px);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    padding-right: 0.15rem;
+    gap: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
   }
-  .jobs { display: flex; flex-direction: column; gap: 0.2rem; }
+  .jobs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
   .job {
     border: 1px solid var(--line);
-    padding: 0.35rem 0.5rem;
+    border-radius: 0;
+    padding: 12px;
     display: grid;
-    gap: 0.25rem;
-    background: #030303;
+    gap: 8px;
+    background: var(--surface);
   }
-  .job.complete { padding-block: 0.25rem; }
+  .job.complete {
+    padding-block: 4px;
+    background: transparent;
+    border-color: transparent;
+  }
   .job.complete .job-url { color: var(--dim); font-style: italic; opacity: 0.75; }
+  .job.complete .row-controls button,
+  .job.complete .row-controls button:hover { border-color: transparent; }
   .job-top {
     display: flex;
     align-items: flex-start;
@@ -199,8 +233,8 @@
     min-width: 0;
     width: 100%;
     color: var(--fg);
-    font-size: 0.95rem;
-    line-height: 1.25;
+    font-size: 14px;
+    line-height: 1.6;
     overflow-wrap: anywhere;
     white-space: normal;
   }
@@ -208,32 +242,40 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.35rem 0.55rem;
+    gap: 12px;
     color: var(--dim);
-    font-size: 0.68rem;
-    letter-spacing: 0.06em;
+    font-size: 12px;
   }
   .input-clip-panel {
     position: absolute;
-    top: calc(100% + 0.35rem);
+    top: calc(100% + 12px);
     left: 0;
     right: 0;
     z-index: 2;
     border: 1px solid var(--line);
-    background: var(--bg);
-    padding: 0.35rem 0.5rem;
+    border-radius: 0;
+    background: var(--surface);
+    padding: 16px;
   }
-  .input-wrap.input-clip-open + .status {
+  .input-wrap.input-clip-open ~ .status {
     transform: translateY(calc(var(--input-clip-height, 0px) + 0.5rem));
   }
   .input-wrap.input-clip-open ~ .queue {
-    top: calc(100% + var(--input-clip-height, 0px) + 1rem);
-    max-height: calc(50vh - var(--input-clip-height, 0px) - 1.5rem);
+    top: calc(100% + var(--input-clip-height, 0px) + 56px);
+    max-height: max(160px, calc(50svh - var(--input-clip-height, 0px) - 116px));
   }
   .clip-field {
     display: flex;
     align-items: center;
     gap: 0.3rem;
+  }
+  .clip-field > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .clip-field input {
     flex: 0 0 5.6rem;
@@ -269,9 +311,7 @@
     border: 1px solid var(--line);
     overflow: hidden;
     touch-action: none;
-    background:
-      linear-gradient(90deg, rgba(25, 194, 216, 0.04), rgba(255, 255, 255, 0.03)),
-      repeating-linear-gradient(90deg, #090909 0 0.55rem, #151515 0.55rem 1.1rem);
+    background: repeating-linear-gradient(90deg, var(--surface) 0 0.55rem, var(--muted-surface) 0.55rem 1.1rem);
   }
   .clip-track.has-thumb,
   .clip-track.has-filmstrip {
@@ -306,8 +346,8 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    background: rgba(25, 194, 216, 0.2);
-    border-inline: 1px solid rgba(25, 194, 216, 0.8);
+    background: color-mix(in oklch, var(--accent) 15%, transparent);
+    border-inline: 1px solid var(--accent);
   }
   .clip-handle {
     position: absolute;
@@ -360,39 +400,81 @@
     bottom: 0;
     display: flex;
     justify-content: flex-end;
-    gap: 0.8rem;
+    gap: 16px;
     background: var(--bg);
-    padding-top: 0.25rem;
+    padding: 8px 0;
+  }
+  .control-icon { display: block; width: 20px; height: 20px; pointer-events: none; }
+  button:has(.control-icon) { display: inline-flex; align-items: center; justify-content: center; }
+  form button { min-width: 44px; }
+  form::before, form::after {
+    content: '';
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-color: var(--accent);
+    border-style: solid;
+    pointer-events: none;
+  }
+  form::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+  form::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+  button { text-transform: none; letter-spacing: 0; touch-action: manipulation; }
+  input { font-size: 16px; touch-action: manipulation; }
+  button:not(:disabled):active { background-color: var(--muted-surface); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .row-controls { gap: 6px; }
+  .row-controls button { min-width: 32px; height: 30px; border-radius: 0; color: var(--dim); }
+  .clip-toggle { flex-basis: 32px; }
+  .clear-clip, .preview-clip, .clip-field input { min-height: 34px; border-radius: 0; }
+  .clip-track { height: 88px; border-radius: 0; }
+  .clip-track-note, .clip-preview-note { font-size: 11px; letter-spacing: 0; line-height: 1.5; }
+  .job-state { font-size: 11px; letter-spacing: 0; line-height: 1.5; font-variant-numeric: tabular-nums; }
+  .bar { border-radius: 0; }
+  .list-actions button { min-height: 36px; padding: 0 8px; }
+  @media (hover: hover) and (pointer: fine) {
+    form button:not(:disabled):hover { background: var(--muted-surface); }
+    #download.ready:hover { background: color-mix(in oklch, var(--accent) 85%, white); }
+  }
+  @media (pointer: coarse) {
+    .row-controls button, .clear-clip, .preview-clip, .clip-zoom, .list-actions button { min-width: 44px; min-height: 44px; }
+    .clip-handle { width: 20px; }
   }
   @media (max-width: 620px) {
+    main { width: calc(100% - 48px); top: 42svh; }
+    .brand { bottom: calc(100% + 24px); }
     form.has-input { flex-wrap: wrap; }
-    form.has-input input { flex-basis: 100%; border-bottom: 1px solid var(--line); }
-    form button { flex: 1; padding: 0.55rem 0; }
-    .job-top { align-items: flex-start; flex-direction: column; gap: 0.35rem; }
-    .download-one,
-    .remove-job {
-      flex-basis: 2rem;
-      width: 2rem;
-      height: 1.8rem;
-    }
-    .clip-toggle {
-      flex-basis: 3.75rem;
-      height: 1.8rem;
-    }
-    .job { padding: 0.5rem; }
+    form.has-input input { flex-basis: 100%; min-height: 48px; border-bottom: 1px solid var(--line); margin-bottom: 7px; }
+    form button { flex: 1; padding-inline: 10px; }
+    #download { width: 64px; flex-basis: 64px; }
+    .job-top { flex-direction: column; gap: 8px; }
+    .row-controls { align-self: flex-end; }
+    .job-title { gap: 8px; }
+    .input-clip-panel { padding: 12px; }
+    .clip-field { flex: 1; }
+    .clip-field input { min-width: 0; font-size: 16px; }
+    .queue { max-height: calc(58svh - 100px); }
+  }
+  @media (max-height: 600px) {
+    main { position: relative; top: auto; left: auto; transform: none; margin: 160px auto 32px; }
+    .queue, .input-wrap.input-clip-open ~ .queue { max-height: none; padding-bottom: 32px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
   }
 </style>
 </head>
 <body>
 <main>
-  <div class="brand"><img class="logo" src="/logo.png" alt=""></div>
+  <header class="brand">
+    <img class="logo" src="/logo.png" alt="">
+  </header>
   <div class="input-wrap">
-    <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled>×</button>
+    <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled data-icon="close"></button>
     <form id="form">
       <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
-      <button id="add" type="button" hidden disabled>add</button>
-      <button id="clipInput" type="button" hidden disabled>clip</button>
-      <button id="download" type="submit" disabled>download</button>
+      <button id="add" type="button" hidden disabled aria-label="add to queue" data-icon="add"></button>
+      <button id="clipInput" type="button" hidden disabled aria-label="edit clip" data-icon="clip"></button>
+      <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
     </form>
     <div id="inputClipPanel" class="clip-panel input-clip-panel" hidden>
       <label class="clip-field">
@@ -403,9 +485,9 @@
         <span>end</span>
         <input id="inputClipEnd" name="input-clip-end" type="text" aria-label="clip end time">
       </label>
-      <button id="inputClipClear" class="clear-clip" type="button" disabled>reset</button>
-      <button id="inputClipPreview" class="preview-clip" type="button" disabled>preview</button>
-      <button id="inputClipDownload" class="preview-clip" type="button" disabled>clip</button>
+      <button id="inputClipClear" class="clear-clip" type="button" disabled aria-label="reset clip" data-icon="reset"></button>
+      <button id="inputClipPreview" class="preview-clip" type="button" disabled aria-label="preview clip" data-icon="play"></button>
+      <button id="inputClipDownload" class="preview-clip" type="button" disabled aria-label="download clip" data-icon="download"></button>
       <div id="inputClipTrack"></div>
       <div id="inputClipPreviewPanel"></div>
     </div>
@@ -414,8 +496,8 @@
   <div class="queue">
     <div id="jobs" class="jobs"></div>
     <div class="list-actions">
-      <button id="cancel" type="button" hidden>cancel</button>
-      <button id="clear" type="button" hidden>clear</button>
+      <button id="cancel" type="button" hidden aria-label="cancel downloads" data-icon="stop"></button>
+      <button id="clear" type="button" hidden aria-label="clear queue" data-icon="clear"></button>
     </div>
   </div>
 </main>
@@ -443,6 +525,40 @@
   const clearButton = document.getElementById('clear');
   const jobsList = document.getElementById('jobs');
   const statusLine = document.getElementById('status');
+
+  const CONTROL_ICONS = {
+    close: 'M5 5 15 15 M15 5 5 15',
+    add: 'M10 4v12 M4 10h12',
+    minus: 'M4 10h12',
+    download: 'M10 3v9 M6 8l4 4 4-4 M4 13v4h12v-4',
+    clip: 'M3 3h4v4H3z M3 13h4v4H3z M7 7l10 10 M7 13 17 3',
+    reset: 'M4 8V4 M4 8h4 M4 8l4-4h5l4 4v5l-4 4H7l-3-3',
+    play: 'M6 3l10 7-10 7z',
+    stop: 'M5 5h10v10H5z',
+    clear: 'M3 5h14 M8 5V3h4v2 M5 5v12h10V5 M8 8v6 M12 8v6',
+  };
+
+  function setButtonIcon(button, name) {
+    if (button.dataset.icon === name && button.firstElementChild) return;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 20 20');
+    svg.setAttribute('class', 'control-icon');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.5');
+    svg.setAttribute('stroke-linecap', 'square');
+    svg.setAttribute('stroke-linejoin', 'miter');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', CONTROL_ICONS[name]);
+    svg.append(path);
+    button.replaceChildren(svg);
+    button.dataset.icon = name;
+  }
+
+  document.querySelectorAll('button[data-icon]').forEach((button) => {
+    setButtonIcon(button, button.dataset.icon);
+  });
 
   let nextLocalId = 1;
   let groupRunning = false;
@@ -486,7 +602,7 @@
   }
 
   function canEditClip(item) {
-    return item.format !== 'audio' && (
+    return item.format !== 'audio' && sourceForUrl(item.url) !== 'discord' && (
       item.status === 'queued' || item.status === 'canceled' || item.status === 'invalid'
     );
   }
@@ -537,7 +653,8 @@
     inputClipClear.disabled = !hasInputClipText();
     inputClipPreviewButton.disabled = !showPanel || !hasInputClipText() || !inputClip.ok;
     inputClipDownloadButton.disabled = !showPanel || !hasInput || !hasInputClipText() || !inputClip.ok || groupRunning || activeCount() >= MAX_ACTIVE_JOBS;
-    inputClipPreviewButton.textContent = inputClipPreviewOpen ? 'hide preview' : 'preview';
+    setButtonIcon(inputClipPreviewButton, inputClipPreviewOpen ? 'close' : 'play');
+    inputClipPreviewButton.setAttribute('aria-label', inputClipPreviewOpen ? 'hide preview' : 'preview clip');
     renderInputClipTrack(showPanel);
     renderInputClipPreview(showPanel);
   }
@@ -749,7 +866,7 @@
   function updateControls() {
     const inputUrls = urlInput.value.trim().split(/\s+/).filter(Boolean);
     const hasInput = inputUrls.length > 0;
-    const canClipInput = hasInput && !inputUrls.some((url) => sourceForUrl(url) === 'soundcloud');
+    const canClipInput = hasInput && !inputUrls.some((url) => ['soundcloud', 'discord'].includes(sourceForUrl(url)));
     const hasQueuedOrCanceled = queuedCount() > 0 || restartableCount() > 0;
     const active = activeCount();
 
@@ -783,6 +900,7 @@
     if (source === 'x') return 'X';
     if (source === 'reddit') return 'Reddit';
     if (source === 'soundcloud') return 'SoundCloud';
+    if (source === 'discord') return 'Discord';
     return 'site';
   }
 
@@ -797,6 +915,7 @@
     } catch {
       return 'generic';
     }
+    if (host === 'cdn.discordapp.com' || host === 'media.discordapp.net') return 'discord';
     if (host === 'youtu.be' || matchesHost(host, 'youtube.com')) return 'youtube';
     if (matchesHost(host, 'tiktok.com')) return 'tiktok';
     if (matchesHost(host, 'instagram.com')) return 'instagram';
@@ -1029,19 +1148,19 @@
     const zoomOut = document.createElement('button');
     zoomOut.type = 'button';
     zoomOut.className = 'preview-clip clip-zoom';
-    zoomOut.textContent = '-';
+    setButtonIcon(zoomOut, 'minus');
     zoomOut.title = 'zoom out';
 
     const zoomReset = document.createElement('button');
     zoomReset.type = 'button';
     zoomReset.className = 'preview-clip clip-zoom';
-    zoomReset.textContent = '1x';
+    setButtonIcon(zoomReset, 'reset');
     zoomReset.title = 'reset zoom';
 
     const zoomIn = document.createElement('button');
     zoomIn.type = 'button';
     zoomIn.className = 'preview-clip clip-zoom';
-    zoomIn.textContent = '+';
+    setButtonIcon(zoomIn, 'add');
     zoomIn.title = 'zoom in';
 
     zoomControls.append(zoomOut, zoomReset, zoomIn);
@@ -1449,7 +1568,8 @@
     const clearClip = document.createElement('button');
     clearClip.type = 'button';
     clearClip.className = 'clear-clip';
-    clearClip.textContent = 'reset';
+    setButtonIcon(clearClip, 'reset');
+    clearClip.setAttribute('aria-label', 'reset clip');
     clearClip.title = 'reset clip';
     clearClip.disabled = !canEditClip(item) || !hasClipText(item);
     clearClip.addEventListener('click', () => {
@@ -1467,7 +1587,8 @@
     const previewClip = document.createElement('button');
     previewClip.type = 'button';
     previewClip.className = 'preview-clip';
-    previewClip.textContent = item.clipPreviewOpen ? 'hide preview' : 'preview';
+    setButtonIcon(previewClip, item.clipPreviewOpen ? 'close' : 'play');
+    previewClip.setAttribute('aria-label', item.clipPreviewOpen ? 'hide preview' : 'preview clip');
     previewClip.title = 'preview this clip';
     previewClip.disabled = !canPreviewClipNow(item);
     previewClip.addEventListener('click', () => {
@@ -1491,7 +1612,8 @@
     const clipDownload = document.createElement('button');
     clipDownload.type = 'button';
     clipDownload.className = 'preview-clip';
-    clipDownload.textContent = 'clip';
+    setButtonIcon(clipDownload, 'download');
+    clipDownload.setAttribute('aria-label', 'download clip');
     clipDownload.title = 'download this clip';
     clipDownload.disabled = !canDownloadClipNow(item);
     clipDownload.addEventListener('click', () => {
@@ -1602,7 +1724,7 @@
       clipToggle.type = 'button';
       clipToggle.className = 'clip-toggle';
       clipToggle.classList.toggle('active', hasClipText(item));
-      clipToggle.textContent = 'clip';
+      setButtonIcon(clipToggle, 'clip');
       clipToggle.title = hasClipText(item) ? 'edit clip' : 'set clip';
       clipToggle.disabled = !canEditClip(item);
       clipToggle.setAttribute('aria-label', hasClipText(item) ? 'edit clip' : 'set clip');
@@ -1614,22 +1736,22 @@
       const downloadOne = document.createElement('button');
       downloadOne.type = 'button';
       downloadOne.className = 'download-one';
-      downloadOne.textContent = '↓';
+      setButtonIcon(downloadOne, 'download');
       downloadOne.title = singleDownloadTitle(active);
       downloadOne.disabled = !canStartSingleDownload(item, active);
-      downloadOne.setAttribute('aria-label', item.format === 'audio' ? 'download this track' : 'download this video');
+      downloadOne.setAttribute('aria-label', item.format !== 'mp4' ? 'download this track' : 'download this video');
       downloadOne.addEventListener('click', () => startSingleItem(item));
 
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'remove-job';
       remove.classList.toggle('cancel-active', isActive(item));
-      remove.textContent = '×';
+      setButtonIcon(remove, 'close');
       remove.title = isActive(item) ? 'cancel this download' : 'remove';
       remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued item');
       remove.addEventListener('click', () => removeItem(item));
 
-      if (item.format !== 'audio') controls.append(clipToggle);
+      if (item.format !== 'audio' && sourceForUrl(item.url) !== 'discord') controls.append(clipToggle);
       controls.append(downloadOne, remove);
       top.append(title, controls);
 
@@ -1672,11 +1794,12 @@
     playlist = null,
     renderNow = true,
   ) {
-    const linkedClip = selectedFormat === 'audio' ? null : clipRangeFromUrl(url);
-    const start = selectedFormat === 'audio'
+    const audioOnly = selectedFormat === 'audio' || sourceForUrl(url) === 'discord';
+    const linkedClip = audioOnly ? null : clipRangeFromUrl(url);
+    const start = audioOnly
       ? ''
       : clipStart || (linkedClip?.start !== null && linkedClip?.start !== undefined ? formatClipTime(linkedClip.start) : '');
-    const end = selectedFormat === 'audio'
+    const end = audioOnly
       ? ''
       : clipEnd || (linkedClip?.end !== null && linkedClip?.end !== undefined ? formatClipTime(linkedClip.end) : '');
     const item = {
@@ -1731,7 +1854,7 @@
       if (response.ok) {
         item.duration = clipDurationFromMetadata(data);
         item.thumbnail = safeThumbnailUrl(data.thumbnail) || null;
-        if (item.format !== 'audio') {
+        if (item.format !== 'audio' && sourceForUrl(item.url) !== 'discord') {
           if (data.clip && !hasClipText(item)) {
             item.clipStart = formatClipTime(data.clip.start);
             item.clipEnd = formatClipTime(data.clip.end);
@@ -1953,7 +2076,8 @@
     try {
       for (const url of urls) {
         if (sourceForUrl(url) !== 'soundcloud') {
-          queued.push(queueItem(url, 'mp4', null, clipStart, clipEnd, null, false));
+          const format = sourceForUrl(url) === 'discord' ? 'mp3' : 'mp4';
+          queued.push(queueItem(url, format, null, clipStart, clipEnd, null, false));
           continue;
         }
 

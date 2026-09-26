@@ -43,6 +43,7 @@ export function parseVideoMetadataOutput(output: string): VideoMetadata | undefi
   } catch {
     return undefined;
   }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
   if (typeof data.title !== 'string' || data.title.trim().length === 0) return undefined;
 
   const duration = parseOptionalSeconds(data.duration);

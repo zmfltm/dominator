@@ -7,7 +7,7 @@ import { join, parse } from 'node:path';
 import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
-import type { JobRequest } from './validate';
+import { isSoundCloudUrl, type JobRequest } from './validate';
 import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const TEMP_PREFIX = 'dominator-';
@@ -106,6 +106,7 @@ export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
     '--ignore-config',
     ...youtubeJsRuntimeArgs(request.url),
     ...FORMAT_ARGS[request.format],
+    ...(isSoundCloudUrl(request.url) ? ['--embed-thumbnail'] : []),
     '--no-playlist',
     '--progress',
     '--newline',
