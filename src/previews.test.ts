@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFilmstripFfmpegArgs,
-  buildPreviewDurationArgs,
   buildPreviewYtDlpArgs,
   isPreviewStale,
   parsePreviewDuration,
@@ -24,14 +23,15 @@ describe('preview args', () => {
     expect(args.at(-1)).toBe(url);
   });
 
-  it('keeps preview URLs behind -- for duration lookups', () => {
+  it('reads duration from the completed download instead of extracting it separately', () => {
     const url = 'https://youtu.be/dQw4w9WgXcQ';
-    const args = buildPreviewDurationArgs(url);
+    const args = buildPreviewYtDlpArgs(url, '/tmp/dominator-preview-test');
 
     expect(args).toContain('--ignore-config');
     expect(args).toContain('--js-runtimes');
     expect(args).toContain(`node:${process.execPath}`);
-    expect(args).toContain('--skip-download');
+    expect(args[args.indexOf('--print') + 1]).toBe('after_move:duration');
+    expect(args).not.toContain('--skip-download');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
   });

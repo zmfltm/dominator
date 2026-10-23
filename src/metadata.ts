@@ -4,10 +4,13 @@ import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const METADATA_TIMEOUT_MS = 15_000;
 export const MAX_RUNNING_METADATA = 7;
+export const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
+export const MAX_CACHED_METADATA = 256;
 
 let runningMetadata = 0;
 const metadataWaiters: Array<() => void> = [];
 const metadataByUrl = new Map<string, Promise<VideoMetadata>>();
+const metadataCache = new Map<string, { metadata: VideoMetadata; expiresAt: number }>();
 
 export class MetadataError extends Error {
   constructor(message: string) {
@@ -90,10 +93,22 @@ export async function fetchVideoTitle(url: string, timeoutMs = METADATA_TIMEOUT_
 }
 
 export function fetchVideoMetadata(url: string, timeoutMs = METADATA_TIMEOUT_MS): Promise<VideoMetadata> {
+  const cached = metadataCache.get(url);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return Promise.resolve(cached.metadata);
+    metadataCache.delete(url);
+  }
   const existing = metadataByUrl.get(url);
   if (existing) return existing;
 
-  const lookup = runLimitedMetadataLookup(url, timeoutMs);
+  const lookup = runLimitedMetadataLookup(url, timeoutMs).then((metadata) => {
+    if (metadataCache.size >= MAX_CACHED_METADATA) {
+      const oldestUrl = metadataCache.keys().next().value;
+      if (oldestUrl !== undefined) metadataCache.delete(oldestUrl);
+    }
+    metadataCache.set(url, { metadata, expiresAt: Date.now() + METADATA_CACHE_TTL_MS });
+    return metadata;
+  });
   metadataByUrl.set(url, lookup);
   void lookup.finally(() => {
     if (metadataByUrl.get(url) === lookup) metadataByUrl.delete(url);

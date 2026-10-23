@@ -2,10 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
 <title>Dominator</title>
 <link rel="icon" type="image/png" href="/logo.png?v=464aa8a">
+<link rel="preload" href="/fonts/IoskeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   @font-face {
     font-family: 'Ioskeley Mono';
@@ -15,474 +18,242 @@
     font-display: swap;
   }
   :root {
+    color-scheme: dark;
     --bg: #000;
-    --fg: oklch(0.88 0.035 75);
-    --dim: oklch(0.65 0.025 75);
-    --line: oklch(0.29 0.018 75);
-    --surface: #0c0c0c;
-    --muted-surface: #151515;
-    --accent: oklch(0.8 0.15 75);
-    --error: #ff8585;
+    --fg: oklch(0.95 0 0);
+    --dim: oklch(0.7 0 0);
+    --disabled: oklch(0.44 0 0);
+    --line: oklch(0.3 0 0);
+    --surface: oklch(0.13 0 0);
+    --muted-surface: oklch(0.22 0 0);
+    --accent: oklch(0.95 0 0);
+    --error: oklch(0.95 0 0);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
   body {
     background: var(--bg);
     color: var(--fg);
     font-family: 'Ioskeley Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 17px;
-    min-height: 100vh;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100svh;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(oklch(0.42 0 0) 0.7px, transparent 0.9px);
+    background-size: 14px 14px;
+    mask-image: radial-gradient(ellipse 55% 80% at 50% 42%, black, transparent);
+    opacity: 0.4;
   }
   main {
-    width: min(680px, calc(100% - 64px));
+    width: min(680px, calc(100% - 80px));
     position: fixed;
     top: 50svh;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -26px);
   }
   .brand {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: calc(100% + 32px);
+    bottom: calc(100% + 36px);
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
+    justify-content: center;
+    pointer-events: none;
   }
   .logo {
     width: 88px;
-    height: auto;
-    opacity: 1;
-    mix-blend-mode: screen;
+    height: 88px;
+    background: radial-gradient(circle, var(--fg) 1.4px, transparent 1.6px) 0 0 / 4px 4px;
+    mask: url('/logo-hd.png') center / contain no-repeat;
+    mask-mode: luminance;
   }
   .input-wrap { position: relative; }
   form {
     display: flex;
     align-items: stretch;
-    min-height: 56px;
-    padding: 0;
+    height: 52px;
     border: 1px solid var(--line);
-    border-radius: 0;
-    background: var(--surface);
+    background: var(--bg);
+    transition: border-color 100ms ease-out;
   }
-  form:focus-within {
-    border-color: color-mix(in oklch, var(--accent) 25%, var(--line));
-    box-shadow: 0 0 2px color-mix(in oklch, var(--accent) 2%, transparent);
-  }
+  form:focus-within { border-color: var(--dim); }
   input {
-    flex: 1;
     min-width: 0;
-    padding: 0.5rem 0.65rem;
+    padding: 10px 14px;
     background: none;
     border: 0;
     color: var(--fg);
+    caret-color: var(--accent);
     font: inherit;
-    outline: none;
+    font-size: 16px;
+    touch-action: manipulation;
   }
+  #url { flex: 1; }
   button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
     background: none;
     border: 0;
-    color: var(--accent);
-    font: inherit;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.7rem;
-    cursor: pointer;
-    transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
-  }
-  form button {
-    min-height: 46px;
-    padding: 0 14px;
     border-radius: 0;
-    white-space: nowrap;
-  }
-  #add,
-  #clipInput { color: var(--fg); }
-  #clipInput.active { color: var(--accent); }
-  #download {
-    width: 64px;
-    flex: 0 0 64px;
-    border-left: 1px solid var(--line);
-  }
-  #clearText {
-    position: absolute;
-    top: 6px;
-    right: 100%;
-    width: 28px;
-    height: 44px;
     color: var(--dim);
-    font-size: 20px;
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: color 100ms ease-out, border-color 100ms ease-out, background-color 100ms ease-out;
   }
-  #download.ready {
-    background: color-mix(in oklch, var(--accent) 8%, var(--surface));
-    color: var(--accent);
-    box-shadow: 0 0 2px color-mix(in oklch, var(--accent) 3%, transparent);
-  }
-  button:disabled { color: var(--dim); cursor: not-allowed; }
-  .row-controls {
-    flex: 0 0 auto;
-    align-self: flex-start;
-    display: flex;
-    align-items: center;
-    gap: 0.28rem;
-  }
-  .download-one,
-  .remove-job {
-    flex: 0 0 1.55rem;
-    width: 1.55rem;
-    height: 1.45rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--line);
-    color: var(--dim);
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 0.9rem;
-    font-weight: 700;
-    line-height: 1;
-    padding: 0;
-  }
-  .download-one:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
-  .remove-job:not(:disabled):hover { border-color: var(--error); color: var(--error); }
-  .remove-job.cancel-active:not(:disabled):hover { border-color: var(--dim); color: var(--fg); }
-  .download-one:disabled,
-  .remove-job:disabled { border-color: var(--line); color: var(--dim); cursor: default; }
-  .clip-toggle {
-    flex: 0 0 3.25rem;
-    height: 1.45rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--line);
-    color: var(--dim);
-    font-size: 0.62rem;
-    line-height: 1;
-    padding: 0;
-  }
-  .clip-toggle.active {
-    color: var(--accent);
-    border-color: var(--accent);
-    box-shadow: none;
-  }
-  .clip-toggle:not(:disabled):hover { color: var(--fg); border-color: var(--fg); }
-  .clip-toggle:disabled { border-color: var(--line); color: var(--dim); cursor: default; }
-  #cancel { color: var(--error); }
+  button:disabled { color: var(--disabled); cursor: default; }
+  button:not(:disabled):active { background-color: var(--muted-surface); color: var(--fg); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--fg); outline-offset: -3px; }
+  /* The surrounding form supplies the URL field's focus indicator. */
+  #url:focus-visible { outline: none; }
+  form button { width: 46px; }
+  #download { width: 60px; flex-basis: 60px; border-left: 1px solid var(--line); }
+  #download.ready { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  #download.ready:active { background: var(--fg); }
+  #add { color: var(--fg); }
+  #clipInput.active, .clip-toggle.active { color: var(--accent); }
+  #clearText { position: absolute; top: 4px; right: calc(100% + 2px); width: 36px; height: 44px; }
   [hidden] { display: none !important; }
-  .status {
+  .workspace {
     position: absolute;
     top: calc(100% + 12px);
-    left: 0;
-    right: 0;
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--dim);
-  }
-  .status.error { color: var(--error); }
-  .queue {
-    position: absolute;
-    top: calc(100% + 40px);
-    left: 0;
-    right: 0;
-    max-height: calc(50svh - 100px);
+    left: -4px;
+    right: -4px;
+    max-height: calc(50svh - 54px - env(safe-area-inset-bottom));
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    overscroll-behavior-y: contain;
     scrollbar-width: thin;
     scrollbar-color: var(--line) transparent;
+    padding: 0 4px 4px;
   }
-  .jobs {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
+  .status { color: var(--dim); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+  .status:empty { display: none; }
+  .status:not(:empty) { margin-bottom: 12px; }
+  .status.error, .job-state.error { color: var(--error); }
+  .jobs { display: flex; flex-direction: column; gap: 6px; }
   .job {
     border: 1px solid var(--line);
-    border-radius: 0;
-    padding: 12px;
+    border-left: 2px solid var(--line);
+    padding: 10px 12px;
     display: grid;
     gap: 8px;
     background: var(--surface);
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 54px;
   }
-  .job.complete {
-    padding-block: 4px;
-    background: transparent;
-    border-color: transparent;
-  }
-  .job.complete .job-url { color: var(--dim); font-style: italic; opacity: 0.75; }
-  .job.complete .row-controls button,
-  .job.complete .row-controls button:hover { border-color: transparent; }
-  .job-top {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    width: 100%;
-  }
-  .job-title {
-    min-width: 0;
-    width: 100%;
-    display: flex;
-    align-items: flex-start;
-    gap: 0.4rem;
-  }
-  .site-icon {
-    flex: 0 0 auto;
-    width: 16px;
-    height: 16px;
-    margin-top: 0.15rem;
-    color: var(--fg);
-    opacity: 0.9;
-  }
+  .job[data-status="starting"], .job[data-status="downloading"], .job[data-status="processing"] { border-left-color: var(--accent); }
+  .job[data-status="failed"], .job[data-status="invalid"] { border-left-color: var(--error); }
+  .job.complete { padding-block: 4px; background: transparent; border-color: transparent; }
+  .job.complete .job-url { color: var(--dim); font-style: italic; }
+  .job.complete .row-controls button { border-color: transparent; }
+  .job.complete .download-one, .job.complete .clip-toggle { display: none; }
+  .job-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; }
+  .job-title { min-width: 0; flex: 1 1 300px; display: flex; align-items: flex-start; gap: 8px; }
+  .site-icon { flex: 0 0 16px; width: 16px; height: 16px; margin-top: 3px; color: var(--dim); }
   .site-icon svg { display: block; width: 100%; height: 100%; }
-  .job-url {
-    min-width: 0;
-    width: 100%;
-    color: var(--fg);
-    font-size: 14px;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-  .clip-panel {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    color: var(--dim);
-    font-size: 12px;
-  }
-  .input-clip-panel {
-    position: absolute;
-    top: calc(100% + 12px);
-    left: 0;
-    right: 0;
-    z-index: 2;
-    border: 1px solid var(--line);
-    border-radius: 0;
-    background: var(--surface);
-    padding: 16px;
-  }
-  .input-wrap.input-clip-open ~ .status {
-    transform: translateY(calc(var(--input-clip-height, 0px) + 0.5rem));
-  }
-  .input-wrap.input-clip-open ~ .queue {
-    top: calc(100% + var(--input-clip-height, 0px) + 56px);
-    max-height: max(160px, calc(50svh - var(--input-clip-height, 0px) - 116px));
-  }
-  .clip-field {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .clip-field > span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .clip-field input {
-    flex: 0 0 5.6rem;
-    width: 5.6rem;
-    border: 1px solid var(--line);
-    padding: 0.22rem 0.3rem;
-    color: var(--fg);
-    font-size: 0.72rem;
-  }
-  .clip-field input:disabled { color: var(--dim); }
-  .clear-clip,
-  .preview-clip {
-    border: 1px solid var(--line);
-    color: var(--dim);
-    padding: 0.32rem 0.55rem;
-    font-size: 0.62rem;
-  }
-  .clear-clip:not(:disabled):hover,
-  .preview-clip:not(:disabled):hover { color: var(--fg); border-color: var(--fg); }
-  .clear-clip:disabled,
-  .preview-clip:disabled { color: var(--dim); cursor: default; }
-  #inputClipTrack,
-  #inputClipPreviewPanel,
-  .clip-preview-panel,
-  .clip-track-wrap {
-    flex: 1 0 100%;
-    display: grid;
-    gap: 0.2rem;
-  }
+  .job-url { min-width: 0; width: 100%; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+  .row-controls { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+  .row-controls button { width: 32px; height: 32px; border: 1px solid var(--line); }
+  .row-controls .clip-toggle.active { border-color: var(--accent); }
+  .row-controls .download-one:not(:disabled) { color: var(--accent); }
+  .clip-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(3, 38px); align-items: end; gap: 8px; color: var(--dim); }
+  .input-clip-panel { border: 1px solid var(--line); background: var(--surface); padding: 12px; margin-bottom: 12px; }
+  .clip-field { display: grid; gap: 5px; flex: 1 1 90px; min-width: 0; }
+  .clip-field > span { font-size: 11px; }
+  .clip-field input { width: 100%; min-height: 38px; border: 1px solid var(--line); padding: 6px 8px; font-variant-numeric: tabular-nums; }
+  .clip-field input:disabled { color: var(--disabled); }
+  .clear-clip, .preview-clip { align-self: flex-end; min-width: 38px; min-height: 38px; border: 1px solid var(--line); }
+  #inputClipTrack, #inputClipPreviewPanel, .clip-preview-panel, .clip-track-wrap { grid-column: 1 / -1; min-width: 0; display: grid; gap: 6px; }
   .clip-track {
     position: relative;
-    height: 4.8rem;
+    height: 88px;
     border: 1px solid var(--line);
     overflow: hidden;
     touch-action: none;
-    background: repeating-linear-gradient(90deg, var(--surface) 0 0.55rem, var(--muted-surface) 0.55rem 1.1rem);
+    background: repeating-linear-gradient(90deg, var(--surface) 0 8px, var(--muted-surface) 8px 16px);
   }
-  .clip-track.has-thumb,
-  .clip-track.has-filmstrip {
-    background:
-      linear-gradient(90deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.45)),
-      var(--clip-thumb);
+  .clip-track.has-thumb, .clip-track.has-filmstrip {
+    background: linear-gradient(90deg, oklch(0 0 0 / 0.12), oklch(0 0 0 / 0.45)), var(--clip-thumb);
     background-position: center, center;
   }
-  .clip-track.has-thumb {
-    background-repeat: no-repeat, repeat-x;
-    background-size: 100% 100%, auto 100%;
-  }
-  .clip-track.has-filmstrip {
-    background-repeat: no-repeat, no-repeat;
-    background-size: 100% 100%, 100% 100%;
-  }
-  .clip-track::before {
-    content: '';
-    position: absolute;
-    inset: 0.35rem 0;
-    background: repeating-linear-gradient(90deg, transparent 0 2.2rem, rgba(232, 232, 232, 0.14) 2.2rem 2.25rem);
-    pointer-events: none;
-  }
-  .clip-outside {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.62);
-    pointer-events: none;
-  }
-  .clip-range-fill {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    background: color-mix(in oklch, var(--accent) 15%, transparent);
-    border-inline: 1px solid var(--accent);
-  }
-  .clip-handle {
-    position: absolute;
-    top: -1px;
-    bottom: -1px;
-    width: 0.58rem;
-    transform: translateX(-50%);
-    border-inline: 1px solid #000;
-    background: var(--accent);
-    cursor: ew-resize;
-    padding: 0;
-  }
-  .clip-track-tools {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-  .clip-track-zoom {
-    display: flex;
-    gap: 0.25rem;
-  }
-  .clip-zoom {
-    min-width: 1.6rem;
-    padding-inline: 0.35rem;
-  }
-  .clip-track-note,
-  .clip-preview-note {
-    color: var(--dim);
-    font-size: 0.6rem;
-    letter-spacing: 0.06em;
-  }
-  .clip-preview-player {
-    flex: 1 0 100%;
-    width: 100%;
-    max-height: 260px;
-    border: 1px solid var(--line);
-    background: #050505;
-  }
-  .job-state {
-    color: var(--dim);
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-  }
-  .job-state.error { color: var(--error); }
+  .clip-track.has-thumb { background-repeat: no-repeat, repeat-x; background-size: 100% 100%, auto 100%; }
+  .clip-track.has-filmstrip { background-repeat: no-repeat, no-repeat; background-size: 100% 100%, 100% 100%; }
+  .clip-outside { position: absolute; top: 0; bottom: 0; background: oklch(0 0 0 / 0.68); pointer-events: none; }
+  .clip-range-fill { position: absolute; top: 0; bottom: 0; background: color-mix(in oklch, var(--accent) 12%, transparent); border-inline: 1px solid var(--accent); }
+  .clip-handle { position: absolute; top: 0; bottom: 0; width: 12px; transform: translateX(-50%); border-inline: 1px solid var(--bg); background: var(--accent); cursor: ew-resize; }
+  .clip-handle:focus-visible { outline-offset: -2px; }
+  .clip-track-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .clip-track-zoom { display: flex; gap: 4px; }
+  .clip-zoom { min-width: 30px; min-height: 30px; }
+  .clip-track-note, .clip-preview-note { color: var(--dim); font-size: 11px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+  .clip-preview-player { width: 100%; aspect-ratio: 16 / 9; max-height: 260px; border: 1px solid var(--line); background: var(--bg); }
+  .job-state { color: var(--dim); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
   .bar { height: 2px; background: var(--line); overflow: hidden; }
-  .bar div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
-  .list-actions {
-    position: sticky;
-    bottom: 0;
-    display: flex;
-    justify-content: flex-end;
-    gap: 16px;
-    background: var(--bg);
-    padding: 8px 0;
-  }
-  .control-icon { display: block; width: 20px; height: 20px; pointer-events: none; }
-  button:has(.control-icon) { display: inline-flex; align-items: center; justify-content: center; }
-  form button { min-width: 44px; }
-  form::before, form::after {
-    content: '';
-    position: absolute;
-    width: 7px;
-    height: 7px;
-    border-color: color-mix(in oklch, var(--accent) 30%, var(--line));
-    border-style: solid;
-    pointer-events: none;
-  }
-  form::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
-  form::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
-  button { text-transform: none; letter-spacing: 0; touch-action: manipulation; }
-  input { font-size: 16px; touch-action: manipulation; }
-  button:not(:disabled):active { background-color: var(--muted-surface); }
-  button:focus-visible, input:focus-visible { outline: 1px solid var(--dim); outline-offset: 2px; }
-  /* The surrounding form supplies the URL field's focus indicator. */
-  #url:focus-visible { outline: none; }
-  .row-controls { gap: 6px; }
-  .row-controls button { min-width: 32px; height: 30px; border-radius: 0; color: var(--dim); }
-  .clip-toggle { flex-basis: 32px; }
-  .clear-clip, .preview-clip, .clip-field input { min-height: 34px; border-radius: 0; }
-  .clip-track { height: 88px; border-radius: 0; }
-  .clip-track-note, .clip-preview-note { font-size: 11px; letter-spacing: 0; line-height: 1.5; }
-  .job-state { font-size: 11px; letter-spacing: 0; line-height: 1.5; font-variant-numeric: tabular-nums; }
-  .bar { border-radius: 0; }
-  .list-actions button { min-height: 36px; padding: 0 8px; }
+  .bar div { height: 100%; width: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform 120ms ease-out; }
+  .list-actions { position: sticky; bottom: -4px; display: flex; justify-content: flex-end; gap: 8px; background: var(--bg); padding-top: 8px; }
+  .list-actions button { width: 40px; height: 40px; }
+  #cancel { color: var(--error); }
+  .control-icon { display: block; width: 18px; height: 18px; pointer-events: none; }
+  ::selection { background: var(--accent); color: var(--bg); }
   @media (hover: hover) and (pointer: fine) {
-    form button:not(:disabled):hover { background: var(--muted-surface); }
-    #download.ready:hover { background: color-mix(in oklch, var(--accent) 12%, var(--surface)); }
+    button:not(:disabled):hover { background-color: var(--muted-surface); color: var(--fg); }
+    .row-controls button:not(:disabled):hover, .clear-clip:not(:disabled):hover, .preview-clip:not(:disabled):hover { border-color: var(--dim); }
+    .remove-job:not(:disabled):hover { color: var(--error); }
+    .remove-job.cancel-active:not(:disabled):hover { color: var(--fg); }
+    #download.ready:hover { background: color-mix(in oklch, var(--accent) 85%, var(--fg)); color: var(--bg); }
+    .clip-handle:not(:disabled):hover { background: var(--fg); }
+    .job.complete .row-controls button:hover { border-color: transparent; }
   }
   @media (pointer: coarse) {
+    .clip-panel { grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(3, 44px); }
     .row-controls button, .clear-clip, .preview-clip, .clip-zoom, .list-actions button { min-width: 44px; min-height: 44px; }
-    .clip-handle { width: 20px; }
+    .clip-handle { width: 24px; }
+    #clearText { width: 44px; }
   }
-  @media (max-width: 620px) {
-    main { width: calc(100% - 48px); top: 42svh; }
-    .brand { bottom: calc(100% + 24px); }
-    form.has-input { flex-wrap: wrap; }
-    form.has-input input { flex-basis: 100%; min-height: 48px; border-bottom: 1px solid var(--line); margin-bottom: 7px; }
-    form button { flex: 1; padding-inline: 10px; }
-    #download { width: 64px; flex-basis: 64px; }
-    .job-top { flex-direction: column; gap: 8px; }
-    .row-controls { align-self: flex-end; }
-    .job-title { gap: 8px; }
-    .input-clip-panel { padding: 12px; }
-    .clip-field { flex: 1; }
-    .clip-field input { min-width: 0; font-size: 16px; }
-    .queue { max-height: calc(58svh - 100px); }
+  @media (max-width: 620px), (max-height: 600px) {
+    main { position: relative; top: auto; left: auto; transform: none; margin: max(140px, 30svh) auto 24px; width: calc(100% - 88px); }
+    .brand { bottom: calc(100% + 28px); }
+    .logo { width: 64px; height: 64px; }
+    .workspace { position: static; max-height: none; overflow: visible; margin-top: 12px; padding: 0 0 env(safe-area-inset-bottom); }
+    .job-title { flex-basis: 100%; }
+    .job.complete .job-title { flex-basis: 200px; }
+    .clip-track-tools { flex-wrap: wrap; }
+    .clip-track-zoom { margin-left: auto; }
+    #clearText { width: 44px; right: 100%; }
+    form button { width: 44px; }
+    #download { width: 52px; flex-basis: 52px; }
+    .list-actions { bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+    .clip-panel { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .clip-field { grid-column: span 3; }
+    .clip-panel > button { grid-column: span 2; min-height: 44px; }
   }
-  @media (max-height: 600px) {
-    main { position: relative; top: auto; left: auto; transform: none; margin: 160px auto 32px; }
-    .queue, .input-wrap.input-clip-open ~ .queue { max-height: none; padding-bottom: 32px; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { transition: none !important; }
-  }
+  @media (prefers-reduced-motion: reduce) { .bar div { transition: none; } }
 </style>
 </head>
 <body>
 <main>
   <header class="brand">
-    <img class="logo" src="/logo-hd.png" width="1254" height="1254" alt="">
+    <div class="logo" role="img" aria-label="Dominator"></div>
   </header>
   <div class="input-wrap">
     <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled data-icon="close"></button>
     <form id="form">
-      <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
+      <input id="url" type="text" aria-label="media URL" name="urls" inputmode="url" enterkeyhint="enter" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="status">
       <button id="add" type="button" hidden disabled aria-label="add to queue" data-icon="add"></button>
-      <button id="clipInput" type="button" hidden disabled aria-label="edit clip" data-icon="clip"></button>
+      <button id="clipInput" type="button" hidden disabled aria-label="edit clip" aria-controls="inputClipPanel" aria-expanded="false" data-icon="clip"></button>
       <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
     </form>
+  </div>
+  <div class="workspace">
     <div id="inputClipPanel" class="clip-panel input-clip-panel" hidden>
       <label class="clip-field">
         <span>start</span>
@@ -498,13 +269,13 @@
       <div id="inputClipTrack"></div>
       <div id="inputClipPreviewPanel"></div>
     </div>
-  </div>
-  <p id="status" class="status" role="status" aria-live="polite"></p>
-  <div class="queue">
-    <div id="jobs" class="jobs"></div>
-    <div class="list-actions">
-      <button id="cancel" type="button" hidden aria-label="cancel downloads" data-icon="stop"></button>
-      <button id="clear" type="button" hidden aria-label="clear queue" data-icon="clear"></button>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <div class="queue">
+      <div id="jobs" class="jobs" role="list" aria-label="download queue"></div>
+      <div class="list-actions">
+        <button id="cancel" type="button" hidden aria-label="cancel downloads" data-icon="stop"></button>
+        <button id="clear" type="button" hidden aria-label="clear queue" data-icon="clear"></button>
+      </div>
     </div>
   </div>
 </main>
@@ -512,9 +283,7 @@
   const MAX_ACTIVE_JOBS = 7;
   const MAX_CLIP_SECONDS = 24 * 60 * 60;
   const DOUBLE_BACKSPACE_MS = 300;
-  const main = document.querySelector('main');
   const form = document.getElementById('form');
-  const inputWrap = document.querySelector('.input-wrap');
   const urlInput = document.getElementById('url');
   const addButton = document.getElementById('add');
   const clipInputButton = document.getElementById('clipInput');
@@ -591,13 +360,13 @@
   let lastBackspaceAt = 0;
   let clipDragActive = false;
   let renderQueued = false;
+  let renderFrame = null;
+  let inputTrackKey = '';
+  let refreshInputTrack = () => {};
   const items = [];
+  const rowViews = new Map();
 
-  const inputClipResizeObserver = new ResizeObserver(() => {
-    const height = inputClipPanel.hidden ? 0 : inputClipPanel.getBoundingClientRect().height;
-    main.style.setProperty('--input-clip-height', height + 'px');
-  });
-  inputClipResizeObserver.observe(inputClipPanel);
+  if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) urlInput.focus();
 
   function setStatus(text, isError = false) {
     statusLine.textContent = text;
@@ -650,7 +419,7 @@
   function updateInputClipControls(hasInput) {
     const showPanel = hasInput && inputClipOpen;
     inputClipPanel.hidden = !showPanel;
-    inputWrap.classList.toggle('input-clip-open', showPanel);
+    clipInputButton.setAttribute('aria-expanded', String(showPanel));
     const inputClip = clipPayload({
       clipStart: inputClipStart.value,
       clipEnd: inputClipEnd.value,
@@ -862,7 +631,7 @@
   }
 
   function restartableCount() {
-    return items.filter((item) => item.status === 'canceled').length;
+    return items.filter((item) => item.status === 'canceled' || item.status === 'failed').length;
   }
 
   function toggleButton(button, show) {
@@ -893,11 +662,11 @@
     downloadButton.classList.toggle('ready', !downloadButton.disabled);
   }
 
-  function progressWidth(item) {
-    if (item.status === 'saving' || item.status === 'processing') return '100%';
-    if (item.status === 'starting') return '5%';
-    if (item.status === 'downloading') return (item.percent ?? 0) + '%';
-    return '0';
+  function progressFraction(item) {
+    if (item.status === 'saving' || item.status === 'processing') return 1;
+    if (item.status === 'starting') return 0.02;
+    if (item.status === 'downloading') return clamp((item.percent ?? 0) / 100, 0, 1);
+    return 0;
   }
 
   function sourceName(source) {
@@ -1010,13 +779,12 @@
       const size = downloaded && total ? ' ' + downloaded + ' / ' + total : '';
       return 'downloading ' + item.percent.toFixed(1) + '%' + size;
     }
-    if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
+    if (item.status === 'failed' || item.status === 'invalid') return '! ' + (item.error || item.status);
     return item.status;
   }
 
   function displayTitle(item) {
     if (item.title) return item.title;
-    if (item.titleLoading) return 'loading title';
     return item.url;
   }
 
@@ -1030,7 +798,7 @@
     return (
       !groupRunning &&
       active < MAX_ACTIVE_JOBS &&
-      (item.status === 'queued' || item.status === 'canceled')
+      (item.status === 'queued' || item.status === 'canceled' || item.status === 'failed')
     );
   }
 
@@ -1157,18 +925,21 @@
     zoomOut.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomOut, 'minus');
     zoomOut.title = 'zoom out';
+    zoomOut.setAttribute('aria-label', 'zoom out');
 
     const zoomReset = document.createElement('button');
     zoomReset.type = 'button';
     zoomReset.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomReset, 'reset');
     zoomReset.title = 'reset zoom';
+    zoomReset.setAttribute('aria-label', 'reset zoom');
 
     const zoomIn = document.createElement('button');
     zoomIn.type = 'button';
     zoomIn.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomIn, 'add');
     zoomIn.title = 'zoom in';
+    zoomIn.setAttribute('aria-label', 'zoom in');
 
     zoomControls.append(zoomOut, zoomReset, zoomIn);
     tools.append(note, zoomControls);
@@ -1246,7 +1017,7 @@
     }
 
     function beginDrag(event, handle) {
-      if (options.disabled) return;
+      if (options.disabled || event.button !== 0) return;
       dragging = handle;
       clipDragActive = true;
       track.setPointerCapture?.(event.pointerId);
@@ -1297,6 +1068,7 @@
     }
     track.addEventListener('pointerup', finishDrag);
     track.addEventListener('pointercancel', finishDrag);
+    track.addEventListener('lostpointercapture', finishDrag);
 
     track.append(leftOutside, rightOutside, fill, startHandle, endHandle);
     wrap.append(track, tools);
@@ -1311,11 +1083,15 @@
 
   function clearPreviewPanel(parent) {
     for (const video of parent.querySelectorAll('video')) {
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
+      releasePreviewVideo(video);
     }
     parent.replaceChildren();
+  }
+
+  function releasePreviewVideo(video) {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
   }
 
   function appendClipPreview(parent, source, clip, loading, autoPlay = false) {
@@ -1414,9 +1190,16 @@
   }
 
   function renderInputClipTrack(showPanel) {
+    const key = JSON.stringify([showPanel, inputClipDuration, inputClipThumbnail, inputClipFilmstrip, inputClipLoading, inputClipPreviewLoading]);
+    if (key === inputTrackKey) {
+      refreshInputTrack();
+      return;
+    }
+    inputTrackKey = key;
     inputClipTrack.replaceChildren();
+    refreshInputTrack = () => {};
     if (!showPanel) return;
-    appendClipTrack(inputClipTrack, {
+    refreshInputTrack = appendClipTrack(inputClipTrack, {
       duration: inputClipDuration,
       thumbnail: inputClipThumbnail,
       filmstrip: inputClipFilmstrip,
@@ -1539,6 +1322,7 @@
         renderAndRestoreClipFocus(item, 'start', startInput.selectionStart, startInput.selectionEnd);
       } else if (canEditClip(item)) {
         refreshTrack();
+        clearClip.disabled = !hasClipText(item);
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
@@ -1564,6 +1348,7 @@
         renderAndRestoreClipFocus(item, 'end', endInput.selectionStart, endInput.selectionEnd);
       } else if (canEditClip(item)) {
         refreshTrack();
+        clearClip.disabled = !hasClipText(item);
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
@@ -1656,6 +1441,7 @@
         startInput.value = start;
         endInput.value = end;
         clearClipValidation(item);
+        clearClip.disabled = false;
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
         updateControls();
@@ -1674,7 +1460,7 @@
   }
 
   function renderAndRestoreClipFocus(item, field, selectionStart, selectionEnd) {
-    render();
+    flushRender();
     const input = jobsList.querySelector(
       '[data-local-id="' + item.localId + '"] [data-clip-field="' + field + '"]',
     );
@@ -1686,109 +1472,149 @@
   }
 
   function render() {
+    if (renderFrame !== null) return;
+    renderFrame = requestAnimationFrame(flushRender);
+  }
+
+  function flushRender() {
+    if (renderFrame !== null) cancelAnimationFrame(renderFrame);
+    renderFrame = null;
     if (clipDragActive) {
       renderQueued = true;
       return;
     }
     renderQueued = false;
-    const reusableVideos = new Map();
-    for (const row of jobsList.querySelectorAll('.job[data-local-id]')) {
-      const video = row.querySelector('.clip-preview-player');
-      if (video) reusableVideos.set(row.dataset.localId, video);
+    const focused = document.activeElement;
+    const focusedRow = focused.closest('.job');
+    const focusLabel = focused.getAttribute('aria-label');
+    const selection = focused.matches('input') ? [focused.selectionStart, focused.selectionEnd] : null;
+    const currentIds = new Set(items.map((item) => item.localId));
+    for (const [id, view] of rowViews) {
+      if (currentIds.has(id)) continue;
+      clearPreviewPanel(view.row);
+      view.row.remove();
+      rowViews.delete(id);
     }
     const active = activeCount();
-    const nodes = items.map((item) => {
-      const row = document.createElement('section');
-      row.className = 'job';
-      row.dataset.localId = String(item.localId);
-      row.classList.toggle('complete', item.status === 'complete');
+    let previousRow = null;
+    for (const item of items) {
+      const key = JSON.stringify([
+        displayTitle(item), canEditClip(item), isActive(item), item.status === 'complete',
+        canStartSingleDownload(item, active), hasClipText(item), item.clipOpen,
+        item.duration, item.thumbnail, item.filmstrip, item.titleLoading, item.previewLoading,
+        item.clipPreviewOpen, item.clipPreviewAutoPlay, item.previewSource,
+        item.clipOpen && groupRunning, item.clipOpen && active >= MAX_ACTIVE_JOBS,
+      ]);
+      let view = rowViews.get(item.localId);
+      if (!view || view.key !== key) {
+        const reusableVideo = view?.row.querySelector('.clip-preview-player');
+        if (reusableVideo) reusableVideo.remove();
+        const row = document.createElement('section');
+        row.className = 'job';
+        row.setAttribute('role', 'listitem');
+        row.dataset.localId = String(item.localId);
+        row.classList.toggle('complete', item.status === 'complete');
 
-      const top = document.createElement('div');
-      top.className = 'job-top';
+        const top = document.createElement('div');
+        top.className = 'job-top';
 
-      const title = document.createElement('div');
-      title.className = 'job-title';
+        const title = document.createElement('div');
+        title.className = 'job-title';
 
-      const source = sourceForUrl(item.url);
-      const icon = document.createElement('span');
-      icon.className = 'site-icon';
-      icon.setAttribute('role', 'img');
-      icon.title = sourceName(source);
-      icon.setAttribute('aria-label', sourceName(source));
-      icon.append(iconForSource(source));
+        const source = sourceForUrl(item.url);
+        const icon = document.createElement('span');
+        icon.className = 'site-icon';
+        icon.setAttribute('role', 'img');
+        icon.title = sourceName(source);
+        icon.setAttribute('aria-label', sourceName(source));
+        icon.append(iconForSource(source));
 
-      const url = document.createElement('p');
-      url.className = 'job-url';
-      url.title = item.url;
-      url.textContent = displayTitle(item);
+        const url = document.createElement('p');
+        url.className = 'job-url';
+        url.title = item.url;
+        url.textContent = displayTitle(item);
 
-      title.append(icon, url);
+        title.append(icon, url);
 
-      const controls = document.createElement('div');
-      controls.className = 'row-controls';
+        const controls = document.createElement('div');
+        controls.className = 'row-controls';
 
-      const clipToggle = document.createElement('button');
-      clipToggle.type = 'button';
-      clipToggle.className = 'clip-toggle';
-      clipToggle.classList.toggle('active', hasClipText(item));
-      setButtonIcon(clipToggle, 'clip');
-      clipToggle.title = hasClipText(item) ? 'edit clip' : 'set clip';
-      clipToggle.disabled = !canEditClip(item);
-      clipToggle.setAttribute('aria-label', hasClipText(item) ? 'edit clip' : 'set clip');
-      clipToggle.addEventListener('click', () => {
-        item.clipOpen = !item.clipOpen;
-        render();
-      });
+        const clipToggle = document.createElement('button');
+        clipToggle.type = 'button';
+        clipToggle.className = 'clip-toggle';
+        clipToggle.classList.toggle('active', hasClipText(item));
+        setButtonIcon(clipToggle, 'clip');
+        clipToggle.title = hasClipText(item) ? 'edit clip' : 'set clip';
+        clipToggle.disabled = !canEditClip(item);
+        clipToggle.setAttribute('aria-label', hasClipText(item) ? 'edit clip' : 'set clip');
+        clipToggle.setAttribute('aria-expanded', String(item.clipOpen));
+        clipToggle.setAttribute('aria-controls', 'clip-' + item.localId);
+        clipToggle.addEventListener('click', () => {
+          item.clipOpen = !item.clipOpen;
+          render();
+        });
 
-      const downloadOne = document.createElement('button');
-      downloadOne.type = 'button';
-      downloadOne.className = 'download-one';
-      setButtonIcon(downloadOne, 'download');
-      downloadOne.title = singleDownloadTitle(active);
-      downloadOne.disabled = !canStartSingleDownload(item, active);
-      downloadOne.setAttribute('aria-label', item.format !== 'mp4' ? 'download this track' : 'download this video');
-      downloadOne.addEventListener('click', () => startSingleItem(item));
+        const downloadOne = document.createElement('button');
+        downloadOne.type = 'button';
+        downloadOne.className = 'download-one';
+        setButtonIcon(downloadOne, 'download');
+        downloadOne.title = singleDownloadTitle(active);
+        downloadOne.disabled = !canStartSingleDownload(item, active);
+        downloadOne.setAttribute('aria-label', item.format !== 'mp4' ? 'download this track' : 'download this video');
+        downloadOne.addEventListener('click', () => startSingleItem(item));
 
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'remove-job';
-      remove.classList.toggle('cancel-active', isActive(item));
-      setButtonIcon(remove, 'close');
-      remove.title = isActive(item) ? 'cancel this download' : 'remove';
-      remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued item');
-      remove.addEventListener('click', () => removeItem(item));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'remove-job';
+        remove.classList.toggle('cancel-active', isActive(item));
+        setButtonIcon(remove, 'close');
+        remove.title = isActive(item) ? 'cancel this download' : 'remove';
+        remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued item');
+        remove.addEventListener('click', () => removeItem(item));
 
-      if (item.format !== 'audio' && sourceForUrl(item.url) !== 'discord') controls.append(clipToggle);
-      controls.append(downloadOne, remove);
-      top.append(title, controls);
+        if (item.format !== 'audio' && sourceForUrl(item.url) !== 'discord') controls.append(clipToggle);
+        controls.append(downloadOne, remove);
+        top.append(title, controls);
 
-      row.append(top);
+        row.append(top);
 
-      if (canEditClip(item) && item.clipOpen) {
-        row.append(renderClipPanel(item, reusableVideos.get(String(item.localId)) || null));
-      }
-
-      if (item.status !== 'queued' && item.status !== 'complete') {
+        if (canEditClip(item) && item.clipOpen) {
+          const panel = renderClipPanel(item, reusableVideo || null);
+          panel.id = 'clip-' + item.localId;
+          row.append(panel);
+        }
+        if (reusableVideo && !row.contains(reusableVideo)) releasePreviewVideo(reusableVideo);
         const state = document.createElement('p');
         state.className = 'job-state';
-        state.classList.toggle('error', item.status === 'failed' || item.status === 'invalid');
-        state.textContent = statusText(item);
-
-        if (item.status === 'invalid') {
-          row.append(state);
-        } else {
-          const bar = document.createElement('div');
-          bar.className = 'bar';
-          const fill = document.createElement('div');
-          fill.style.width = progressWidth(item);
-          bar.append(fill);
-          row.append(bar, state);
-        }
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        bar.setAttribute('aria-hidden', 'true');
+        const fill = document.createElement('div');
+        bar.append(fill);
+        row.append(bar, state);
+        if (view) view.row.replaceWith(row);
+        view = { key, row, state, bar, fill };
+        rowViews.set(item.localId, view);
       }
-
-      return row;
-    });
-    jobsList.replaceChildren(...nodes);
+      view.row.dataset.status = item.status;
+      view.state.hidden = item.status === 'queued' || item.status === 'complete';
+      const text = statusText(item);
+      if (view.state.textContent !== text) view.state.textContent = text;
+      view.state.classList.toggle('error', item.status === 'failed' || item.status === 'invalid');
+      view.bar.hidden = !isActive(item) && item.status !== 'saving';
+      view.fill.style.transform = 'scaleX(' + progressFraction(item) + ')';
+      const nextRow = previousRow ? previousRow.nextElementSibling : jobsList.firstElementChild;
+      if (nextRow !== view.row) jobsList.insertBefore(view.row, nextRow);
+      previousRow = view.row;
+    }
+    if (focusedRow && !focused.isConnected && focusLabel) {
+      const row = rowViews.get(Number(focusedRow.dataset.localId))?.row;
+      const replacement = row && [...row.querySelectorAll('[aria-label]')].find((node) => node.getAttribute('aria-label') === focusLabel && !node.disabled);
+      if (replacement) {
+        replacement.focus({ preventScroll: true });
+        if (selection) replacement.setSelectionRange(...selection);
+      } else urlInput.focus({ preventScroll: true });
+    }
     updateControls();
   }
 
@@ -1836,6 +1662,8 @@
       error: null,
       jobId: null,
       source: null,
+      runToken: 0,
+      previewRetryTimer: null,
       metadataPromise: null,
     };
     nextLocalId += 1;
@@ -1919,11 +1747,11 @@
   }
 
   async function loadPreview(item) {
-    if (!items.includes(item) || (item.filmstrip && item.previewSource) || item.previewLoading) return;
+    if (!items.includes(item) || !canEditClip(item) || !item.clipOpen || (item.filmstrip && item.previewSource) || item.previewLoading) return;
     item.previewLoading = true;
     render();
     try {
-      const preview = await startPreview(item.url, () => items.includes(item));
+      const preview = await startPreview(item.url, () => items.includes(item) && item.clipOpen && canEditClip(item));
       if (!items.includes(item) || !preview) return;
       item.filmstrip = safeThumbnailUrl(preview.spriteUrl) || null;
       item.previewSource = safeThumbnailUrl(preview.sourceUrl) || null;
@@ -1932,8 +1760,9 @@
       }
     } catch (error) {
       if (error.status === 429 && items.includes(item)) {
-        window.setTimeout(() => {
-          if (!items.includes(item) || item.filmstrip || !canEditClip(item)) return;
+        item.previewRetryTimer = window.setTimeout(() => {
+          item.previewRetryTimer = null;
+          if (!items.includes(item) || item.filmstrip || !canEditClip(item) || !item.clipOpen) return;
           item.previewRequested = false;
           render();
         }, 1500);
@@ -2063,7 +1892,7 @@
   }
 
   async function queueInput() {
-    if (inputResolving) return [];
+    if (inputResolving) return null;
     const urls = urlInput.value.trim().split(/\s+/).filter(Boolean);
     if (urls.length === 0) return [];
     const clipStart = inputClipStart.value.trim();
@@ -2082,6 +1911,7 @@
 
     try {
       for (const url of urls) {
+        if (resolveToken !== inputResolveToken) return null;
         if (sourceForUrl(url) !== 'soundcloud') {
           const format = sourceForUrl(url) === 'discord' ? 'mp3' : 'mp4';
           queued.push(queueItem(url, format, null, clipStart, clipEnd, null, false));
@@ -2098,7 +1928,7 @@
           try {
             data = await response.json();
           } catch {}
-          if (resolveToken !== inputResolveToken) return queued;
+          if (resolveToken !== inputResolveToken) return null;
           if (!response.ok) throw new Error(data.error || 'could not load SoundCloud tracks');
           if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
             throw new Error('SoundCloud returned no tracks');
@@ -2119,6 +1949,7 @@
             ));
           });
         } catch (error) {
+          if (resolveToken !== inputResolveToken) return null;
           failedUrls.push(url);
           lastError = error instanceof Error && error.message
             ? error.message
@@ -2136,7 +1967,7 @@
         render();
       }
     }
-    return queued;
+    return resolveToken === inputResolveToken ? queued : null;
   }
 
   function downloadFile(item) {
@@ -2165,13 +1996,15 @@
   async function startItem(item) {
     if (item.status !== 'queued') return;
 
+    const token = ++item.runToken;
+    const isCurrent = () => items.includes(item) && item.runToken === token;
     item.status = 'starting';
     item.error = null;
     render();
 
     if (item.titleLoading && hasClipText(item) && item.metadataPromise) {
       await item.metadataPromise;
-      if (item.status !== 'starting') return;
+      if (!isCurrent()) return;
     }
 
     const clip = clipPayload(item);
@@ -2202,33 +2035,38 @@
         data = {};
       }
       if (!response.ok) {
+        if (!isCurrent()) return;
         finishItem(item, 'failed', data.error || 'could not start download');
         return;
       }
     } catch {
+      if (!isCurrent()) return;
       finishItem(item, 'failed', 'could not reach server');
       return;
     }
 
-    item.jobId = data.jobId;
-    if (item.status === 'canceled') {
-      await cancelServerJob(item);
-      render();
-      if (groupRunning) runQueue();
+    if (!isCurrent()) {
+      void cancelServerJob(data.jobId);
       return;
     }
+    if (typeof data.jobId !== 'string' || !data.jobId) {
+      finishItem(item, 'failed', 'server returned no download ID');
+      return;
+    }
+    item.jobId = data.jobId;
 
     const source = new EventSource('/api/jobs/' + item.jobId + '/events');
     item.source = source;
 
     source.addEventListener('progress', (event) => {
+      if (!isCurrent()) return;
       let progress;
       try {
         progress = JSON.parse(event.data);
       } catch {
         return;
       }
-      if (progress.stage === 'downloading') {
+      if (progress.stage === 'downloading' && typeof progress.percent === 'number' && Number.isFinite(progress.percent)) {
         item.status = 'downloading';
         item.percent = progress.percent;
         item.downloadedBytes = progress.downloadedBytes;
@@ -2241,23 +2079,28 @@
 
     source.addEventListener('done', () => {
       source.close();
+      if (!isCurrent()) return;
       item.source = null;
       item.status = 'saving';
       render();
       downloadFile(item);
-      window.setTimeout(() => finishItem(item, 'complete'), 700);
+      window.setTimeout(() => {
+        if (isCurrent()) finishItem(item, 'complete');
+      }, 120);
     });
 
     source.addEventListener('failed', (event) => {
+      if (!isCurrent()) return;
       finishItem(item, 'failed', event.data || 'failed');
     });
 
     source.addEventListener('canceled', () => {
+      if (!isCurrent()) return;
       finishItem(item, 'canceled');
     });
 
     source.onerror = () => {
-      if (isActive(item)) finishItem(item, 'failed', 'lost connection to server');
+      if (isCurrent() && isActive(item)) finishItem(item, 'failed', 'lost connection to server');
     };
   }
 
@@ -2273,13 +2116,13 @@
 
   function reactivateCanceledItems() {
     for (const item of items) {
-      if (item.status === 'canceled') resetForQueue(item);
+      if (item.status === 'canceled' || item.status === 'failed') resetForQueue(item);
     }
   }
 
   function startSingleItem(item) {
     if (groupRunning || activeCount() >= MAX_ACTIVE_JOBS) return;
-    if (item.status === 'canceled') resetForQueue(item);
+    if (item.status === 'canceled' || item.status === 'failed') resetForQueue(item);
     if (item.status !== 'queued') return;
     groupRunning = false;
     void startItem(item);
@@ -2297,10 +2140,10 @@
     render();
   }
 
-  async function cancelServerJob(item) {
-    if (!item.jobId) return;
+  async function cancelServerJob(jobId) {
+    if (!jobId) return;
     try {
-      await fetch('/api/jobs/' + item.jobId, { method: 'DELETE' });
+      await fetch('/api/jobs/' + jobId, { method: 'DELETE' });
     } catch {}
   }
 
@@ -2309,11 +2152,14 @@
       clearTimeout(item.clipPreviewReplayTimer);
       item.clipPreviewReplayTimer = null;
     }
+    if (item.previewRetryTimer) clearTimeout(item.previewRetryTimer);
+    item.runToken += 1;
     if (isActive(item)) {
       item.status = 'canceled';
       if (item.source) item.source.close();
+      item.source = null;
       render();
-      void cancelServerJob(item).finally(() => {
+      void cancelServerJob(item.jobId).finally(() => {
         if (groupRunning) runQueue();
       });
       return;
@@ -2324,7 +2170,7 @@
     const index = items.indexOf(item);
     if (index !== -1) items.splice(index, 1);
     render();
-    void cancelServerJob(item);
+    void cancelServerJob(item.jobId);
   }
 
   function cancelAllDownloads() {
@@ -2334,9 +2180,11 @@
     const cancelRequests = [];
     for (const item of items) {
       if (item.status === 'queued' || isActive(item)) {
+        item.runToken += 1;
         item.status = 'canceled';
         if (item.source) item.source.close();
-        if (item.jobId) cancelRequests.push(cancelServerJob(item));
+        item.source = null;
+        if (item.jobId) cancelRequests.push(cancelServerJob(item.jobId));
       }
     }
     setStatus('canceled');
@@ -2348,8 +2196,12 @@
     void cancelAllDownloads();
   });
 
-  clearButton.addEventListener('click', async () => {
-    await cancelAllDownloads();
+  clearButton.addEventListener('click', () => {
+    void cancelAllDownloads();
+    for (const item of items) {
+      if (item.clipPreviewReplayTimer) clearTimeout(item.clipPreviewReplayTimer);
+      if (item.previewRetryTimer) clearTimeout(item.previewRetryTimer);
+    }
     items.length = 0;
     setStatus('');
     render();
@@ -2410,6 +2262,7 @@
       return;
     }
     const queued = await queueInput();
+    if (!queued) return;
     for (const item of queued) startSingleItem(item);
   });
 
@@ -2433,13 +2286,15 @@
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    await queueInput();
+    const queued = await queueInput();
+    if (!queued) return;
     reactivateCanceledItems();
     groupRunning = true;
     runQueue();
   });
 
   urlInput.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
     if (event.key === 'Backspace' && urlInput.value.length > 0) {
       const now = Date.now();
       if (event.repeat || now - lastBackspaceAt < DOUBLE_BACKSPACE_MS) {

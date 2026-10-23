@@ -6,7 +6,7 @@ Supports YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord 
 
 ## Run
 
-Install Node.js 22+, pnpm, yt-dlp, and ffmpeg, then:
+Install Node.js 22+, pnpm, yt-dlp, and ffmpeg (including ffprobe), then:
 
 ```sh
 pnpm install
@@ -25,6 +25,7 @@ docker compose up -d --build
 
 - Paste links and press Enter to queue them. Click download to start.
 - Use clip to select part of a video.
+- Video downloads prefer H.264 and save as MP4 with H.264 video, 8-bit color, and AAC audio for sharing on X. Incompatible streams are converted locally; compatible streams keep their original quality. Upload duration and file-size limits still depend on your X account.
 - SoundCloud playlists save as individual tracks in their original audio format.
 - For Discord, paste the attachment link, not the message link. Audio saves as MP3. Copy a fresh link if it expires.
 

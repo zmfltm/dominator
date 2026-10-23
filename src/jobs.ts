@@ -1,14 +1,15 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, parse } from 'node:path';
+import { extname, join, parse } from 'node:path';
 import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
 import { isSoundCloudUrl, type JobRequest } from './validate';
 import { youtubeJsRuntimeArgs } from './ytdlp';
+import { buildCompatibleMp4Args, compatibleAudio, compatibleVideo, parseMediaStreams } from './media';
 
 export const TEMP_PREFIX = 'dominator-';
 
@@ -43,7 +44,7 @@ const jobs = new Map<string, Job>();
 let startingJobs = 0;
 
 const FORMAT_ARGS: Record<JobRequest['format'], string[]> = {
-  mp4: ['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b'],
+  mp4: ['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b', '-S', 'vcodec:h264,acodec:aac'],
   mp3: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
   audio: ['-f', 'bestaudio/best'],
 };
@@ -175,6 +176,8 @@ function ffmpegReencodeOutputArgs(format: JobRequest['format']): string[] {
     'veryfast',
     '-crf',
     '23',
+    '-pix_fmt',
+    'yuv420p',
     '-c:a',
     'aac',
     '-b:a',
@@ -315,6 +318,8 @@ export async function startJob(request: JobRequest): Promise<Job> {
         ? await trimDownloadedFile(job, filePath, request.clip, request.format)
         : filePath;
       if (job.status !== 'running') return;
+      if (request.format === 'mp4') job.filePath = await prepareCompatibleMp4(job, job.filePath);
+      if (job.status !== 'running') return;
       job.status = 'done';
       job.completedAt = Date.now();
       job.events.emit('done');
@@ -377,6 +382,55 @@ function emitProcessing(job: Job): void {
   const progress: ProgressEvent = { stage: 'processing' };
   job.lastProgress = progress;
   job.events.emit('progress', progress);
+}
+
+async function prepareCompatibleMp4(job: Job, inputPath: string): Promise<string> {
+  emitProcessing(job);
+  const output = await probeDownloadedFile(job, inputPath);
+  if (job.status !== 'running') return inputPath;
+  const streams = parseMediaStreams(output);
+  const compatible = streams.every((stream) => (
+    stream.codec_type === 'video' ? compatibleVideo(stream) : compatibleAudio(stream)
+  ));
+  if (extname(inputPath).toLowerCase() === '.mp4' && compatible) {
+    return inputPath;
+  }
+  const parsed = parse(inputPath);
+  const outputPath = join(parsed.dir, `${parsed.name}.compatible.mp4`);
+  const error = await runFfmpeg(job, buildCompatibleMp4Args(inputPath, outputPath, streams));
+  if (job.status !== 'running') return inputPath;
+  if (error) throw new Error(`ffmpeg could not prepare compatible MP4: ${error}`);
+  const { size } = await stat(outputPath);
+  if (size === 0) throw new Error('ffmpeg produced an empty MP4');
+  const finalPath = join(parsed.dir, `${parsed.name}.mp4`);
+  await rename(outputPath, finalPath);
+  if (inputPath !== finalPath) await rm(inputPath, { force: true });
+  return finalPath;
+}
+
+function probeDownloadedFile(job: Job, inputPath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('ffprobe', [
+      '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,pix_fmt,profile,channels',
+      '-of', 'json', inputPath,
+    ], { detached: DETACH_CHILD_PROCESS, stdio: ['ignore', 'pipe', 'pipe'] });
+    job.child = child;
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => signalProcessTree(child, 'SIGKILL'), 15_000);
+    timeout.unref();
+    child.stdout.on('data', (chunk: Buffer) => { stdout = (stdout + chunk.toString()).slice(-100_000); });
+    child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-4000); });
+    child.once('error', (cause) => {
+      clearTimeout(timeout);
+      reject(new Error('could not inspect downloaded video', { cause }));
+    });
+    child.once('close', (code) => {
+      clearTimeout(timeout);
+      if (code === 0 || job.status !== 'running') resolve(stdout);
+      else reject(new Error(stderr.trim() || `ffprobe exited with code ${code}`));
+    });
+  });
 }
 
 function runFfmpeg(job: Job, args: string[]): Promise<string | null> {

@@ -80,24 +80,12 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
     'mp4',
     '--no-playlist',
     '--no-warnings',
+    '--print',
+    'after_move:duration',
     '--max-filesize',
     '80M',
     '-o',
     join(dir, 'source.%(ext)s'),
-    '--',
-    url,
-  ];
-}
-
-export function buildPreviewDurationArgs(url: string): string[] {
-  return [
-    '--ignore-config',
-    ...youtubeJsRuntimeArgs(url),
-    '--skip-download',
-    '--no-playlist',
-    '--no-warnings',
-    '--print',
-    'duration',
     '--',
     url,
   ];
@@ -215,9 +203,8 @@ export async function reapStalePreviews(ttlMs = PREVIEW_TTL_MS, now = Date.now()
 
 async function generatePreview(preview: Preview): Promise<void> {
   try {
-    const duration = await fetchPreviewDuration(preview);
+    const { inputPath, duration } = await downloadPreviewVideo(preview);
     preview.duration = duration;
-    const inputPath = await downloadPreviewVideo(preview);
     preview.sourcePath = inputPath;
     const spritePath = join(preview.dir, 'sprite.jpg');
     await createFilmstrip(preview, inputPath, spritePath, duration);
@@ -254,25 +241,11 @@ function runningPreviewCount(): number {
   return startingPreviews + [...previews.values()].filter((preview) => preview.status === 'running').length;
 }
 
-async function fetchPreviewDuration(preview: Preview): Promise<number | undefined> {
-  try {
-    const { stdout } = await runProcess(
-      preview,
-      'yt-dlp',
-      buildPreviewDurationArgs(preview.url),
-      20_000,
-    );
-    return parsePreviewDuration(stdout);
-  } catch {
-    return undefined;
-  }
-}
-
-async function downloadPreviewVideo(preview: Preview): Promise<string> {
-  await runProcess(preview, 'yt-dlp', buildPreviewYtDlpArgs(preview.url, preview.dir), PREVIEW_TIMEOUT_MS);
+async function downloadPreviewVideo(preview: Preview): Promise<{ inputPath: string; duration?: number }> {
+  const { stdout } = await runProcess(preview, 'yt-dlp', buildPreviewYtDlpArgs(preview.url, preview.dir), PREVIEW_TIMEOUT_MS);
   const filePath = await findPreviewInput(preview.dir);
   if (!filePath) throw new Error('yt-dlp produced no preview video');
-  return filePath;
+  return { inputPath: filePath, duration: parsePreviewDuration(stdout) };
 }
 
 async function createFilmstrip(

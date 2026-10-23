@@ -24,6 +24,11 @@ SoundCloud playlist into best-quality audio tracks.
 > accepted. Signed query parameters are preserved. Discord message links return
 > instructions to copy the attachment link. Discord rows hide video clip controls.
 
+> Amended 2026-10-23: refreshed the UI with a black-and-white halftone treatment,
+> stable queue rows, and scrollable clip controls on mobile. MP4 downloads prefer
+> H.264 and inspect the local output with ffprobe. Incompatible streams convert
+> to H.264/yuv420p and AAC-LC stereo; compatible streams avoid re-encoding.
+
 ## Goals
 
 - Paste video URLs from supported sites and queue MP4 downloads.
@@ -50,8 +55,8 @@ SoundCloud playlist into best-quality audio tracks.
 
 - Node >= 22 and pnpm. The app passes its Node executable to yt-dlp as the
   JavaScript runtime for YouTube extraction.
-- `yt-dlp` and `ffmpeg` on PATH (one brew/apt install each). The server checks
-  for both at startup and exits with a clear message if missing.
+- `yt-dlp`, `ffmpeg`, and `ffprobe` on PATH (`ffprobe` comes with FFmpeg). The server checks
+  all three at startup and exits with a clear message if missing.
 
 ## Architecture
 
@@ -137,7 +142,12 @@ be interpreted by a shell.
 - MP4: `-f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b"` (best video plus audio,
   merged by ffmpeg; the final `/b` matches sites that serve one combined file,
   typical for Twitter/Instagram/TikTok/Reddit. Worst case the file is a non-mp4
-  container, named honestly by its real extension).
+  container before preparation). MP4 jobs prefer H.264/AAC with
+  `-S vcodec:h264,acodec:aac`. After clipping, ffprobe inspects the local streams.
+  Compatible H.264/yuv420p and AAC-LC mono/stereo streams are copied; incompatible
+  streams are encoded with libx264/AAC and saved under the original title as MP4.
+  Conversion uses `+faststart`. This addresses codec rejection; platform upload
+  size and duration limits still apply.
 - MP3: `-x --audio-format mp3 --audio-quality 0`.
 - SoundCloud audio: `-f "bestaudio/best"`. The selected source container is
   preserved without lossy conversion. Playlist jobs remain one track per job
@@ -150,15 +160,16 @@ be interpreted by a shell.
 - Common yt-dlp flags: `--no-playlist`, `--progress`, `--newline`,
   `-o <tempdir>/%(title)s.%(ext)s`. YouTube calls also pass `--js-runtimes`
   with the current Node executable so yt-dlp can solve player challenges.
-- Preview generation uses a low-resolution yt-dlp format capped by
+- Preview generation reads duration from `--print after_move:duration` during the
+  same download, avoiding a second extractor run. It uses a low-resolution yt-dlp format capped by
   `--max-filesize 80M`, then ffmpeg samples 5 frames into one JPEG sprite for
   the timeline background. At most 2 preview jobs run at once.
 
 ## UI
 
-Pure black page, centered column:
+Pure black page with a subtle dot field, white controls, and a centered column:
 
-- Tiny centered logo.
+- Centered halftone treatment of the existing logo.
 - Ioskeley Mono web font vendored under `public/fonts/` with its OFL license.
 - Blank URL input that accepts one or more whitespace-separated URLs.
 - Slightly larger global font, compact buttons, a thinner input bar, and the
