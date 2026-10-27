@@ -30,6 +30,8 @@ docker compose up -d --build
 
 Keep yt-dlp updated if downloads fail. Run locally; do not expose port 3000 publicly.
 
+A single download is stopped after 2 hours. Set `DOMINATOR_JOB_TIMEOUT_MS` to change that limit.
+
 ## Tailscale
 
 With the app running and Tailscale connected:

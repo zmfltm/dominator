@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFilmstripFfmpegArgs,
-  buildPreviewDurationArgs,
   buildPreviewYtDlpArgs,
   isPreviewStale,
-  parsePreviewDuration,
   PREVIEW_FRAME_COUNT,
   PREVIEW_FRAME_HEIGHT,
   PREVIEW_FRAME_WIDTH,
+  usablePreviewDuration,
 } from './previews';
 
 describe('preview args', () => {
@@ -20,18 +19,6 @@ describe('preview args', () => {
     expect(args).toContain(`node:${process.execPath}`);
     expect(args).toContain('--max-filesize');
     expect(args).toContain('/tmp/dominator-preview-test/source.%(ext)s');
-    expect(args.at(-2)).toBe('--');
-    expect(args.at(-1)).toBe(url);
-  });
-
-  it('keeps preview URLs behind -- for duration lookups', () => {
-    const url = 'https://youtu.be/dQw4w9WgXcQ';
-    const args = buildPreviewDurationArgs(url);
-
-    expect(args).toContain('--ignore-config');
-    expect(args).toContain('--js-runtimes');
-    expect(args).toContain(`node:${process.execPath}`);
-    expect(args).toContain('--skip-download');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
   });
@@ -53,15 +40,15 @@ describe('preview args', () => {
   });
 });
 
-describe('parsePreviewDuration', () => {
-  it('parses finite duration seconds', () => {
-    expect(parsePreviewDuration('\n180.25\n')).toBe(180.25);
+describe('usablePreviewDuration', () => {
+  it('keeps positive durations up to a day', () => {
+    expect(usablePreviewDuration(180.25)).toBe(180.25);
   });
 
-  it('ignores missing or invalid durations', () => {
-    expect(parsePreviewDuration('NA\n')).toBeUndefined();
-    expect(parsePreviewDuration('-1\n')).toBeUndefined();
-    expect(parsePreviewDuration('999999\n')).toBeUndefined();
+  it('ignores missing or out-of-range durations', () => {
+    expect(usablePreviewDuration(undefined)).toBeUndefined();
+    expect(usablePreviewDuration(0)).toBeUndefined();
+    expect(usablePreviewDuration(999999)).toBeUndefined();
   });
 });
 

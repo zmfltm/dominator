@@ -4,12 +4,49 @@ import {
   buildFfmpegReencodeClipArgs,
   buildYtDlpArgs,
   clipOutputPath,
+  CONCURRENT_FRAGMENTS,
+  DEFAULT_JOB_TIMEOUT_MS,
   formatClipTimestamp,
   isAtJobLimit,
   isOwnedTempDirName,
   isStale,
   MAX_RUNNING_JOBS,
+  parseJobTimeoutMs,
+  PROGRESS_INTERVAL_MS,
+  shouldEmitProgress,
 } from './jobs';
+
+describe('parseJobTimeoutMs', () => {
+  it('defaults when unset or invalid', () => {
+    expect(parseJobTimeoutMs(undefined)).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('soon')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('0')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('-5')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+  });
+
+  it('accepts a positive millisecond count', () => {
+    expect(parseJobTimeoutMs('600000')).toBe(600_000);
+  });
+});
+
+describe('shouldEmitProgress', () => {
+  const downloading = (percent: number) => ({ stage: 'downloading' as const, percent });
+
+  it('always emits the first update and stage changes', () => {
+    expect(shouldEmitProgress(null, 0, downloading(1), 0)).toBe(true);
+    expect(shouldEmitProgress(downloading(50), 100, { stage: 'processing' }, 101)).toBe(true);
+  });
+
+  it('coalesces updates inside the interval', () => {
+    expect(shouldEmitProgress(downloading(10), 1000, downloading(11), 1000 + PROGRESS_INTERVAL_MS - 1)).toBe(false);
+    expect(shouldEmitProgress(downloading(10), 1000, downloading(11), 1000 + PROGRESS_INTERVAL_MS)).toBe(true);
+  });
+
+  it('never drops a finished download', () => {
+    expect(shouldEmitProgress(downloading(99), 1000, downloading(100), 1001)).toBe(true);
+  });
+});
 
 describe('isStale', () => {
   const now = 1_000_000;
@@ -76,6 +113,7 @@ describe('clip args', () => {
     expect(args).toContain('--js-runtimes');
     expect(args).toContain(`node:${process.execPath}`);
     expect(args).not.toContain('--download-sections');
+    expect(args[args.indexOf('--concurrent-fragments') + 1]).toBe(String(CONCURRENT_FRAGMENTS));
     expect(args).toContain('/tmp/dominator-test/%(title)s.%(ext)s');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);

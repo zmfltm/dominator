@@ -19,6 +19,15 @@ export const TEMP_PREFIX = 'dominator-';
 // the startup sweep never fires.
 export const JOB_TTL_MS = 60 * 60 * 1000;
 export const MAX_RUNNING_JOBS = 7;
+// Wall-clock limit for one download plus clipping. Without it a hung yt-dlp or
+// ffmpeg holds a job slot until the user cancels or the server restarts.
+export const DEFAULT_JOB_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+export const JOB_TIMEOUT_MS = parseJobTimeoutMs(process.env.DOMINATOR_JOB_TIMEOUT_MS);
+// yt-dlp can print several progress lines per second per job. Clients only
+// need a few updates a second, so intermediate lines are coalesced.
+export const PROGRESS_INTERVAL_MS = 250;
+// Parallel fragment fetches speed up DASH/HLS sources (Reddit, X, TikTok).
+export const CONCURRENT_FRAGMENTS = 4;
 
 export class JobLimitError extends Error {
   constructor(limit = MAX_RUNNING_JOBS) {
@@ -37,6 +46,7 @@ export interface Job {
   lastProgress: ProgressEvent | null;
   completedAt?: number;
   child?: ChildProcessByStdio<null, Readable, Readable>;
+  deadline?: NodeJS.Timeout;
 }
 
 const jobs = new Map<string, Job>();
@@ -101,11 +111,30 @@ export function buildFfmpegReencodeClipArgs(
   ];
 }
 
+export function parseJobTimeoutMs(value: string | undefined): number {
+  if (!value) return DEFAULT_JOB_TIMEOUT_MS;
+  const ms = Number(value);
+  return Number.isSafeInteger(ms) && ms > 0 ? ms : DEFAULT_JOB_TIMEOUT_MS;
+}
+
+export function shouldEmitProgress(
+  last: ProgressEvent | null,
+  lastAt: number,
+  next: ProgressEvent,
+  now: number,
+): boolean {
+  if (!last || last.stage !== next.stage) return true;
+  if (next.stage === 'downloading' && next.percent >= 100) return true;
+  return now - lastAt >= PROGRESS_INTERVAL_MS;
+}
+
 export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
   return [
     '--ignore-config',
     ...youtubeJsRuntimeArgs(request.url),
     ...FORMAT_ARGS[request.format],
+    '--concurrent-fragments',
+    String(CONCURRENT_FRAGMENTS),
     ...(isSoundCloudUrl(request.url) ? ['--embed-thumbnail'] : []),
     '--no-playlist',
     '--progress',
@@ -194,42 +223,48 @@ export function cancelJob(id: string): CancelJobResult {
   const job = jobs.get(id);
   if (!job) return 'not_found';
   if (job.status !== 'running') return 'not_running';
-
-  job.status = 'canceled';
-  job.error = 'job canceled';
-  job.completedAt = Date.now();
-  job.events.emit('canceled');
-
-  if (!job.child) {
-    removeJobDir(job);
-    return 'canceled';
-  }
-
-  let forceKill: NodeJS.Timeout | undefined;
-  job.child.once('close', () => {
-    if (forceKill) clearTimeout(forceKill);
-    removeJobDir(job);
-  });
-  if (!signalProcessTree(job.child, 'SIGTERM')) {
-    removeJobDir(job);
-    return 'canceled';
-  }
-  forceKill = setTimeout(() => {
-    if (job.status === 'canceled') {
-      if (job.child) signalProcessTree(job.child, 'SIGKILL');
-    }
-  }, 5000);
-  forceKill.unref();
+  stopJob(job, 'canceled', 'job canceled');
   return 'canceled';
 }
 
-function activeJobCount(): number {
-  return startingJobs + [...jobs.values()].filter((job) => (
-    job.status === 'running' || (job.status === 'canceled' && isChildAlive(job.child))
-  )).length;
+function stopJob(job: Job, status: 'canceled' | 'error', message: string): void {
+  job.status = status;
+  job.error = message;
+  job.completedAt = Date.now();
+  clearTimeout(job.deadline);
+  if (status === 'canceled') job.events.emit('canceled');
+  else job.events.emit('failed', message);
+
+  const child = job.child;
+  if (!isChildAlive(child)) {
+    removeJobDir(job);
+    return;
+  }
+
+  let forceKill: NodeJS.Timeout | undefined;
+  child.once('close', () => {
+    if (forceKill) clearTimeout(forceKill);
+    removeJobDir(job);
+  });
+  if (!signalProcessTree(child, 'SIGTERM')) {
+    removeJobDir(job);
+    return;
+  }
+  forceKill = setTimeout(() => {
+    if (isChildAlive(child)) signalProcessTree(child, 'SIGKILL');
+  }, 5000);
+  forceKill.unref();
 }
 
-function isChildAlive(child: Job['child']): boolean {
+function activeJobCount(): number {
+  let count = startingJobs;
+  for (const job of jobs.values()) {
+    if (job.status === 'running' || isChildAlive(job.child)) count += 1;
+  }
+  return count;
+}
+
+function isChildAlive(child: Job['child']): child is NonNullable<Job['child']> {
   return Boolean(child && child.exitCode === null && child.signalCode === null);
 }
 
@@ -259,6 +294,12 @@ export async function startJob(request: JobRequest): Promise<Job> {
   };
   jobs.set(job.id, job);
   startingJobs -= 1;
+  job.deadline = setTimeout(() => {
+    if (job.status !== 'running') return;
+    const minutes = Math.round(JOB_TIMEOUT_MS / 60_000);
+    stopJob(job, 'error', `download timed out after ${minutes} minutes`);
+  }, JOB_TIMEOUT_MS);
+  job.deadline.unref();
 
   const args = buildYtDlpArgs(request, dir);
   let child: ChildProcessByStdio<null, Readable, Readable>;
@@ -279,6 +320,8 @@ export async function startJob(request: JobRequest): Promise<Job> {
   });
 
   let pending = '';
+  let lastEmitted: ProgressEvent | null = null;
+  let lastEmittedAt = 0;
   child.stdout.on('data', (chunk: Buffer) => {
     pending += chunk.toString();
     const lines = pending.split('\n');
@@ -286,8 +329,12 @@ export async function startJob(request: JobRequest): Promise<Job> {
     if (job.status !== 'running') return;
     for (const line of lines) {
       const progress = parseProgressLine(line);
-      if (progress) {
-        job.lastProgress = progress;
+      if (!progress) continue;
+      job.lastProgress = progress;
+      const now = Date.now();
+      if (shouldEmitProgress(lastEmitted, lastEmittedAt, progress, now)) {
+        lastEmitted = progress;
+        lastEmittedAt = now;
         job.events.emit('progress', progress);
       }
     }
@@ -317,6 +364,7 @@ export async function startJob(request: JobRequest): Promise<Job> {
       if (job.status !== 'running') return;
       job.status = 'done';
       job.completedAt = Date.now();
+      clearTimeout(job.deadline);
       job.events.emit('done');
     } catch (err) {
       if (job.status !== 'running') return;
@@ -454,6 +502,7 @@ function failJob(job: Job, message: string): void {
   job.status = 'error';
   job.error = message;
   job.completedAt = Date.now();
+  clearTimeout(job.deadline);
   job.events.emit('failed', message);
   removeJobDir(job);
 }

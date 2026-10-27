@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
+import { fetchVideoMetadata } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { youtubeJsRuntimeArgs } from './ytdlp';
 
@@ -78,6 +79,8 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
     'worst[height<=360][ext=mp4]/worst[height<=360]/worstvideo*[height<=360][ext=mp4]+worstaudio[ext=m4a]/worstvideo*[height<=360]+worstaudio/worst',
     '--merge-output-format',
     'mp4',
+    '--concurrent-fragments',
+    '4',
     '--no-playlist',
     '--no-warnings',
     '--max-filesize',
@@ -89,29 +92,10 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
   ];
 }
 
-export function buildPreviewDurationArgs(url: string): string[] {
-  return [
-    '--ignore-config',
-    ...youtubeJsRuntimeArgs(url),
-    '--skip-download',
-    '--no-playlist',
-    '--no-warnings',
-    '--print',
-    'duration',
-    '--',
-    url,
-  ];
-}
-
-export function parsePreviewDuration(output: string): number | undefined {
-  const line = output
-    .split('\n')
-    .map((value) => value.trim())
-    .find((value) => value.length > 0 && value !== 'NA');
-  if (!line) return undefined;
-  const duration = Number(line);
-  if (!Number.isFinite(duration) || duration <= 0 || duration > 24 * 60 * 60) return undefined;
-  return Math.round(duration * 1000) / 1000;
+export function usablePreviewDuration(duration: number | undefined): number | undefined {
+  if (duration === undefined || !Number.isFinite(duration)) return undefined;
+  if (duration <= 0 || duration > 24 * 60 * 60) return undefined;
+  return duration;
 }
 
 export function buildFilmstripFfmpegArgs(
@@ -215,9 +199,13 @@ export async function reapStalePreviews(ttlMs = PREVIEW_TTL_MS, now = Date.now()
 
 async function generatePreview(preview: Preview): Promise<void> {
   try {
-    const duration = await fetchPreviewDuration(preview);
+    // The duration usually comes from the metadata cache the client already
+    // warmed, so it runs alongside the download instead of before it.
+    const [duration, inputPath] = await Promise.all([
+      fetchPreviewDuration(preview.url),
+      downloadPreviewVideo(preview),
+    ]);
     preview.duration = duration;
-    const inputPath = await downloadPreviewVideo(preview);
     preview.sourcePath = inputPath;
     const spritePath = join(preview.dir, 'sprite.jpg');
     await createFilmstrip(preview, inputPath, spritePath, duration);
@@ -254,15 +242,9 @@ function runningPreviewCount(): number {
   return startingPreviews + [...previews.values()].filter((preview) => preview.status === 'running').length;
 }
 
-async function fetchPreviewDuration(preview: Preview): Promise<number | undefined> {
+async function fetchPreviewDuration(url: string): Promise<number | undefined> {
   try {
-    const { stdout } = await runProcess(
-      preview,
-      'yt-dlp',
-      buildPreviewDurationArgs(preview.url),
-      20_000,
-    );
-    return parsePreviewDuration(stdout);
+    return usablePreviewDuration((await fetchVideoMetadata(url)).duration);
   } catch {
     return undefined;
   }

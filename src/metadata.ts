@@ -4,10 +4,15 @@ import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const METADATA_TIMEOUT_MS = 15_000;
 export const MAX_RUNNING_METADATA = 7;
+// Lookups take seconds (YouTube needs a JS runtime pass), and the same URL is
+// looked up again for clip timelines and previews, so results are kept briefly.
+export const METADATA_CACHE_TTL_MS = 10 * 60 * 1000;
+export const MAX_CACHED_METADATA = 200;
 
 let runningMetadata = 0;
 const metadataWaiters: Array<() => void> = [];
 const metadataByUrl = new Map<string, Promise<VideoMetadata>>();
+const cachedMetadata = new Map<string, { value: VideoMetadata; expiresAt: number }>();
 
 export class MetadataError extends Error {
   constructor(message: string) {
@@ -90,15 +95,32 @@ export async function fetchVideoTitle(url: string, timeoutMs = METADATA_TIMEOUT_
 }
 
 export function fetchVideoMetadata(url: string, timeoutMs = METADATA_TIMEOUT_MS): Promise<VideoMetadata> {
+  const cached = cachedMetadata.get(url);
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value);
+  if (cached) cachedMetadata.delete(url);
+
   const existing = metadataByUrl.get(url);
   if (existing) return existing;
 
   const lookup = runLimitedMetadataLookup(url, timeoutMs);
   metadataByUrl.set(url, lookup);
+  lookup.then(
+    (value) => cacheMetadata(url, value),
+    () => {},
+  );
   void lookup.finally(() => {
     if (metadataByUrl.get(url) === lookup) metadataByUrl.delete(url);
   }).catch(() => {});
   return lookup;
+}
+
+function cacheMetadata(url: string, value: VideoMetadata): void {
+  cachedMetadata.delete(url);
+  cachedMetadata.set(url, { value, expiresAt: Date.now() + METADATA_CACHE_TTL_MS });
+  if (cachedMetadata.size > MAX_CACHED_METADATA) {
+    const oldest = cachedMetadata.keys().next().value;
+    if (oldest !== undefined) cachedMetadata.delete(oldest);
+  }
 }
 
 async function runLimitedMetadataLookup(url: string, timeoutMs: number): Promise<VideoMetadata> {

@@ -6,6 +6,7 @@
 <meta name="referrer" content="no-referrer">
 <title>Dominator</title>
 <link rel="icon" type="image/png" href="/logo.png?v=464aa8a">
+<link rel="preload" href="/fonts/IoskeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   @font-face {
     font-family: 'Ioskeley Mono';
@@ -15,14 +16,16 @@
     font-display: swap;
   }
   :root {
+    color-scheme: dark;
     --bg: #000;
-    --fg: oklch(0.88 0.035 75);
-    --dim: oklch(0.65 0.025 75);
-    --line: oklch(0.29 0.018 75);
-    --surface: #0c0c0c;
-    --muted-surface: #151515;
-    --accent: oklch(0.8 0.15 75);
-    --error: #ff8585;
+    --fg: oklch(0.96 0.012 150);
+    --dim: oklch(0.68 0.035 150);
+    --line: oklch(0.3 0.035 150);
+    --surface: oklch(0.13 0.012 150);
+    --muted-surface: oklch(0.19 0.02 150);
+    --accent: oklch(0.86 0.21 145);
+    --glow: color-mix(in oklch, var(--accent) 45%, transparent);
+    --error: oklch(0.72 0.17 25);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -31,7 +34,20 @@
     font-family: 'Ioskeley Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     font-size: 17px;
     min-height: 100vh;
+    caret-color: var(--accent);
   }
+  /* Static phosphor wash and scanlines; painted once, never animated. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(0deg, oklch(0.86 0.21 145 / 0.035) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.86 0.21 145 / 0.07), transparent 70%);
+  }
+  ::selection { background: var(--accent); color: #000; }
   main {
     width: min(680px, calc(100% - 64px));
     position: fixed;
@@ -52,8 +68,6 @@
   .logo {
     width: 88px;
     height: auto;
-    opacity: 1;
-    mix-blend-mode: screen;
   }
   .input-wrap { position: relative; }
   form {
@@ -66,8 +80,8 @@
     background: var(--surface);
   }
   form:focus-within {
-    border-color: color-mix(in oklch, var(--accent) 25%, var(--line));
-    box-shadow: 0 0 2px color-mix(in oklch, var(--accent) 2%, transparent);
+    border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
+    box-shadow: 0 0 12px color-mix(in oklch, var(--accent) 12%, transparent);
   }
   input {
     flex: 1;
@@ -114,10 +128,12 @@
     font-size: 20px;
   }
   #download.ready {
-    background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+    background: color-mix(in oklch, var(--accent) 10%, var(--surface));
     color: var(--accent);
-    box-shadow: 0 0 2px color-mix(in oklch, var(--accent) 3%, transparent);
   }
+  #download.ready .control-icon,
+  .clip-toggle.active .control-icon,
+  #clipInput.active .control-icon { filter: drop-shadow(0 0 3px var(--glow)); }
   button:disabled { color: var(--dim); cursor: not-allowed; }
   .row-controls {
     flex: 0 0 auto;
@@ -184,18 +200,21 @@
     left: 0;
     right: 0;
     max-height: calc(50svh - 100px);
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
   }
   .jobs {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
   }
+  .jobs:empty { display: none; }
   .job {
     border: 1px solid var(--line);
     border-radius: 0;
@@ -362,6 +381,7 @@
     transform: translateX(-50%);
     border-inline: 1px solid #000;
     background: var(--accent);
+    box-shadow: 0 0 6px var(--glow);
     cursor: ew-resize;
     padding: 0;
   }
@@ -399,16 +419,21 @@
   }
   .job-state.error { color: var(--error); }
   .bar { height: 2px; background: var(--line); overflow: hidden; }
-  .bar div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+  .bar div {
+    height: 100%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--glow);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.25s linear;
+  }
   .list-actions {
-    position: sticky;
-    bottom: 0;
+    flex: 0 0 auto;
     display: flex;
     justify-content: flex-end;
     gap: 16px;
-    background: var(--bg);
-    padding: 8px 0;
   }
+  .list-actions:not(:has(> :not([hidden]))) { display: none; }
   .control-icon { display: block; width: 20px; height: 20px; pointer-events: none; }
   button:has(.control-icon) { display: inline-flex; align-items: center; justify-content: center; }
   form button { min-width: 44px; }
@@ -473,7 +498,7 @@
 <body>
 <main>
   <header class="brand">
-    <img class="logo" src="/logo-hd.png" width="1254" height="1254" alt="">
+    <img class="logo" src="/logo-hd.png" width="264" height="264" alt="">
   </header>
   <div class="input-wrap">
     <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled data-icon="close"></button>
@@ -591,6 +616,9 @@
   let lastBackspaceAt = 0;
   let clipDragActive = false;
   let renderQueued = false;
+  let renderFrame = 0;
+  let inputClipTrackState = null;
+  const rowElements = new Map();
   const items = [];
 
   const inputClipResizeObserver = new ResizeObserver(() => {
@@ -893,11 +921,11 @@
     downloadButton.classList.toggle('ready', !downloadButton.disabled);
   }
 
-  function progressWidth(item) {
-    if (item.status === 'saving' || item.status === 'processing') return '100%';
-    if (item.status === 'starting') return '5%';
-    if (item.status === 'downloading') return (item.percent ?? 0) + '%';
-    return '0';
+  function progressScale(item) {
+    if (item.status === 'saving' || item.status === 'processing') return 1;
+    if (item.status === 'starting') return 0.05;
+    if (item.status === 'downloading') return clamp((item.percent ?? 0) / 100, 0, 1);
+    return 0;
   }
 
   function sourceName(source) {
@@ -1414,9 +1442,26 @@
   }
 
   function renderInputClipTrack(showPanel) {
+    if (!showPanel) {
+      inputClipTrack.replaceChildren();
+      inputClipTrackState = null;
+      return;
+    }
+    // updateControls runs on every keystroke and render; rebuilding the track
+    // each time is wasted work unless its inputs changed.
+    const key = [
+      inputClipDuration,
+      inputClipThumbnail,
+      inputClipFilmstrip,
+      inputClipLoading,
+      inputClipPreviewLoading,
+    ].join('|');
+    if (inputClipTrackState && inputClipTrackState.key === key) {
+      inputClipTrackState.refresh();
+      return;
+    }
     inputClipTrack.replaceChildren();
-    if (!showPanel) return;
-    appendClipTrack(inputClipTrack, {
+    const refresh = appendClipTrack(inputClipTrack, {
       duration: inputClipDuration,
       thumbnail: inputClipThumbnail,
       filmstrip: inputClipFilmstrip,
@@ -1442,6 +1487,7 @@
         replayInputPreview();
       },
     });
+    inputClipTrackState = { key, refresh };
   }
 
   function renderInputClipPreview(showPanel) {
@@ -1685,7 +1731,34 @@
     }
   }
 
+  // Coalesces background updates (titles, previews) into one render per frame.
+  function scheduleRender() {
+    if (renderFrame) return;
+    renderFrame = requestAnimationFrame(() => {
+      renderFrame = 0;
+      render();
+    });
+  }
+
+  // Progress ticks only change the bar and status text, so patch those in
+  // place instead of rebuilding every row.
+  function patchProgress(item) {
+    const row = rowElements.get(item.localId);
+    const fill = row?.querySelector('.bar > div');
+    const state = row?.querySelector('.job-state');
+    if (!fill || !state || renderFrame || renderQueued) {
+      scheduleRender();
+      return;
+    }
+    fill.style.transform = 'scaleX(' + progressScale(item) + ')';
+    state.textContent = statusText(item);
+  }
+
   function render() {
+    if (renderFrame) {
+      cancelAnimationFrame(renderFrame);
+      renderFrame = 0;
+    }
     if (clipDragActive) {
       renderQueued = true;
       return;
@@ -1697,8 +1770,10 @@
       if (video) reusableVideos.set(row.dataset.localId, video);
     }
     const active = activeCount();
+    rowElements.clear();
     const nodes = items.map((item) => {
       const row = document.createElement('section');
+      rowElements.set(item.localId, row);
       row.className = 'job';
       row.dataset.localId = String(item.localId);
       row.classList.toggle('complete', item.status === 'complete');
@@ -1780,7 +1855,7 @@
           const bar = document.createElement('div');
           bar.className = 'bar';
           const fill = document.createElement('div');
-          fill.style.width = progressWidth(item);
+          fill.style.transform = 'scaleX(' + progressScale(item) + ')';
           bar.append(fill);
           row.append(bar, state);
         }
@@ -1835,6 +1910,7 @@
       totalBytes: null,
       error: null,
       jobId: null,
+      attempt: 0,
       source: null,
       metadataPromise: null,
     };
@@ -1877,7 +1953,7 @@
     } finally {
       if (items.includes(item)) {
         item.titleLoading = false;
-        render();
+        scheduleRender();
       }
     }
   }
@@ -1921,7 +1997,7 @@
   async function loadPreview(item) {
     if (!items.includes(item) || (item.filmstrip && item.previewSource) || item.previewLoading) return;
     item.previewLoading = true;
-    render();
+    scheduleRender();
     try {
       const preview = await startPreview(item.url, () => items.includes(item));
       if (!items.includes(item) || !preview) return;
@@ -1935,13 +2011,13 @@
         window.setTimeout(() => {
           if (!items.includes(item) || item.filmstrip || !canEditClip(item)) return;
           item.previewRequested = false;
-          render();
+          scheduleRender();
         }, 1500);
       }
     } finally {
       if (items.includes(item)) {
         item.previewLoading = false;
-        render();
+        scheduleRender();
       }
     }
   }
@@ -2165,13 +2241,20 @@
   async function startItem(item) {
     if (item.status !== 'queued') return;
 
+    // A row can be canceled and retried while an older POST or event stream is
+    // still in flight. Each start gets an attempt number so stale responses
+    // cannot attach their job to the retried row.
+    const attempt = item.attempt + 1;
+    item.attempt = attempt;
+    const isCurrent = () => item.attempt === attempt && items.includes(item);
+
     item.status = 'starting';
     item.error = null;
     render();
 
     if (item.titleLoading && hasClipText(item) && item.metadataPromise) {
       await item.metadataPromise;
-      if (item.status !== 'starting') return;
+      if (!isCurrent() || item.status !== 'starting') return;
     }
 
     const clip = clipPayload(item);
@@ -2202,26 +2285,34 @@
         data = {};
       }
       if (!response.ok) {
-        finishItem(item, 'failed', data.error || 'could not start download');
+        if (isCurrent() && item.status === 'starting') {
+          finishItem(item, 'failed', data.error || 'could not start download');
+        }
         return;
       }
     } catch {
-      finishItem(item, 'failed', 'could not reach server');
+      if (isCurrent() && item.status === 'starting') {
+        finishItem(item, 'failed', 'could not reach server');
+      }
       return;
     }
 
-    item.jobId = data.jobId;
-    if (item.status === 'canceled') {
-      await cancelServerJob(item);
-      render();
-      if (groupRunning) runQueue();
+    if (!isCurrent() || item.status !== 'starting') {
+      await cancelServerJobId(data.jobId);
+      if (isCurrent()) {
+        render();
+        if (groupRunning) runQueue();
+      }
       return;
     }
+    item.jobId = data.jobId;
 
     const source = new EventSource('/api/jobs/' + item.jobId + '/events');
     item.source = source;
+    const isLive = () => item.source === source && isCurrent();
 
     source.addEventListener('progress', (event) => {
+      if (!isLive()) return;
       let progress;
       try {
         progress = JSON.parse(event.data);
@@ -2236,28 +2327,31 @@
       } else {
         item.status = 'processing';
       }
-      render();
+      patchProgress(item);
     });
 
     source.addEventListener('done', () => {
       source.close();
+      if (!isLive()) return;
       item.source = null;
       item.status = 'saving';
       render();
       downloadFile(item);
-      window.setTimeout(() => finishItem(item, 'complete'), 700);
+      window.setTimeout(() => {
+        if (item.attempt === attempt && item.status === 'saving') finishItem(item, 'complete');
+      }, 700);
     });
 
     source.addEventListener('failed', (event) => {
-      finishItem(item, 'failed', event.data || 'failed');
+      if (isLive()) finishItem(item, 'failed', event.data || 'failed');
     });
 
     source.addEventListener('canceled', () => {
-      finishItem(item, 'canceled');
+      if (isLive()) finishItem(item, 'canceled');
     });
 
     source.onerror = () => {
-      if (isActive(item)) finishItem(item, 'failed', 'lost connection to server');
+      if (isLive() && isActive(item)) finishItem(item, 'failed', 'lost connection to server');
     };
   }
 
@@ -2297,11 +2391,15 @@
     render();
   }
 
-  async function cancelServerJob(item) {
-    if (!item.jobId) return;
+  async function cancelServerJobId(jobId) {
+    if (!jobId) return;
     try {
-      await fetch('/api/jobs/' + item.jobId, { method: 'DELETE' });
+      await fetch('/api/jobs/' + jobId, { method: 'DELETE' });
     } catch {}
+  }
+
+  function cancelServerJob(item) {
+    return cancelServerJobId(item.jobId);
   }
 
   function removeItem(item) {
