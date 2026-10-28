@@ -4,12 +4,48 @@ import {
   buildFfmpegReencodeClipArgs,
   buildYtDlpArgs,
   clipOutputPath,
+  DEFAULT_JOB_TIMEOUT_MS,
   formatClipTimestamp,
   isAtJobLimit,
   isOwnedTempDirName,
   isStale,
   MAX_RUNNING_JOBS,
+  parseJobTimeoutMs,
+  PROGRESS_INTERVAL_MS,
+  shouldEmitProgress,
 } from './jobs';
+
+describe('parseJobTimeoutMs', () => {
+  it('defaults when unset or invalid', () => {
+    expect(parseJobTimeoutMs(undefined)).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('soon')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('0')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+    expect(parseJobTimeoutMs('-5')).toBe(DEFAULT_JOB_TIMEOUT_MS);
+  });
+
+  it('accepts a positive millisecond count', () => {
+    expect(parseJobTimeoutMs('600000')).toBe(600_000);
+  });
+});
+
+describe('shouldEmitProgress', () => {
+  const downloading = (percent: number) => ({ stage: 'downloading' as const, percent });
+
+  it('always emits the first update and stage changes', () => {
+    expect(shouldEmitProgress(null, 0, downloading(1), 0)).toBe(true);
+    expect(shouldEmitProgress(downloading(50), 100, { stage: 'processing' }, 101)).toBe(true);
+  });
+
+  it('coalesces updates inside the interval', () => {
+    expect(shouldEmitProgress(downloading(10), 1000, downloading(11), 1000 + PROGRESS_INTERVAL_MS - 1)).toBe(false);
+    expect(shouldEmitProgress(downloading(10), 1000, downloading(11), 1000 + PROGRESS_INTERVAL_MS)).toBe(true);
+  });
+
+  it('never drops a finished download', () => {
+    expect(shouldEmitProgress(downloading(99), 1000, downloading(100), 1001)).toBe(true);
+  });
+});
 
 describe('isStale', () => {
   const now = 1_000_000;
@@ -65,7 +101,28 @@ describe('clip args', () => {
     expect(formatClipTimestamp(3661.25)).toBe('01:01:01.25');
   });
 
-  it('downloads the full file before local clipping', () => {
+  it('downloads only the clip section when ffmpeg can read URLs', () => {
+    const url = 'https://youtu.be/dQw4w9WgXcQ';
+    const args = buildYtDlpArgs(
+      { url, format: 'mp4', clip: { start: 80, end: 105.5 } },
+      '/tmp/dominator-test',
+      { sections: true },
+    );
+
+    expect(args[args.indexOf('--download-sections') + 1]).toBe('*80-105.5');
+    expect(args.slice(-2)).toEqual(['--', url]);
+  });
+
+  it('ignores section downloads for requests without a clip', () => {
+    const args = buildYtDlpArgs(
+      { url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' },
+      '/tmp/dominator-test',
+      { sections: true },
+    );
+    expect(args).not.toContain('--download-sections');
+  });
+
+  it('downloads the full file before local clipping by default', () => {
     const url = 'https://youtu.be/dQw4w9WgXcQ';
     const args = buildYtDlpArgs(
       { url, format: 'mp4', clip: { start: 80, end: 105 } },
@@ -76,6 +133,7 @@ describe('clip args', () => {
     expect(args).toContain('--js-runtimes');
     expect(args).toContain(`node:${process.execPath}`);
     expect(args).not.toContain('--download-sections');
+    expect(args).not.toContain('--concurrent-fragments');
     expect(args).toContain('/tmp/dominator-test/%(title)s.%(ext)s');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);

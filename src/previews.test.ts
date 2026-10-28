@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFilmstripFfmpegArgs,
-  buildPreviewDurationArgs,
   buildPreviewYtDlpArgs,
   isPreviewStale,
-  parsePreviewDuration,
+  PREVIEW_FRAME_COLUMNS,
   PREVIEW_FRAME_COUNT,
   PREVIEW_FRAME_HEIGHT,
+  PREVIEW_FRAME_ROWS,
   PREVIEW_FRAME_WIDTH,
+  previewStoryboard,
+  usablePreviewDuration,
 } from './previews';
 
 describe('preview args', () => {
@@ -24,24 +26,12 @@ describe('preview args', () => {
     expect(args.at(-1)).toBe(url);
   });
 
-  it('keeps preview URLs behind -- for duration lookups', () => {
-    const url = 'https://youtu.be/dQw4w9WgXcQ';
-    const args = buildPreviewDurationArgs(url);
-
-    expect(args).toContain('--ignore-config');
-    expect(args).toContain('--js-runtimes');
-    expect(args).toContain(`node:${process.execPath}`);
-    expect(args).toContain('--skip-download');
-    expect(args.at(-2)).toBe('--');
-    expect(args.at(-1)).toBe(url);
-  });
-
   it('builds a one-row ffmpeg filmstrip filter', () => {
     const args = buildFilmstripFfmpegArgs('/tmp/source.mp4', '/tmp/sprite.jpg', 120);
     const filter = args[args.indexOf('-vf') + 1];
 
     expect(filter).toContain(`scale=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}`);
-    expect(filter).toContain(`tile=${PREVIEW_FRAME_COUNT}x1`);
+    expect(filter).toContain(`tile=${PREVIEW_FRAME_COLUMNS}x${PREVIEW_FRAME_ROWS}`);
     expect(args.at(-1)).toBe('/tmp/sprite.jpg');
   });
 
@@ -49,19 +39,32 @@ describe('preview args', () => {
     const args = buildFilmstripFfmpegArgs('/tmp/source.mp4', '/tmp/sprite.jpg', 3600);
     const filter = args[args.indexOf('-vf') + 1];
 
-    expect(filter).toContain('fps=0.001389');
+    expect(filter).toContain(`fps=${(PREVIEW_FRAME_COUNT / 3600).toFixed(6)}`);
   });
 });
 
-describe('parsePreviewDuration', () => {
-  it('parses finite duration seconds', () => {
-    expect(parsePreviewDuration('\n180.25\n')).toBe(180.25);
+describe('previewStoryboard', () => {
+  it('describes the sprite grid with evenly spaced frames', () => {
+    expect(previewStoryboard({ id: 'abc', duration: 300 })).toEqual({
+      width: PREVIEW_FRAME_WIDTH,
+      height: PREVIEW_FRAME_HEIGHT,
+      columns: PREVIEW_FRAME_COLUMNS,
+      rows: PREVIEW_FRAME_ROWS,
+      interval: 300 / PREVIEW_FRAME_COUNT,
+      sheets: ['/api/previews/abc/sprite'],
+    });
+  });
+});
+
+describe('usablePreviewDuration', () => {
+  it('keeps positive durations up to a day', () => {
+    expect(usablePreviewDuration(180.25)).toBe(180.25);
   });
 
-  it('ignores missing or invalid durations', () => {
-    expect(parsePreviewDuration('NA\n')).toBeUndefined();
-    expect(parsePreviewDuration('-1\n')).toBeUndefined();
-    expect(parsePreviewDuration('999999\n')).toBeUndefined();
+  it('ignores missing or out-of-range durations', () => {
+    expect(usablePreviewDuration(undefined)).toBeUndefined();
+    expect(usablePreviewDuration(0)).toBeUndefined();
+    expect(usablePreviewDuration(999999)).toBeUndefined();
   });
 });
 

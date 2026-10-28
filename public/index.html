@@ -6,6 +6,7 @@
 <meta name="referrer" content="no-referrer">
 <title>Dominator</title>
 <link rel="icon" type="image/png" href="/logo.png?v=464aa8a">
+<link rel="preload" href="/fonts/IoskeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   @font-face {
     font-family: 'Ioskeley Mono';
@@ -15,14 +16,16 @@
     font-display: swap;
   }
   :root {
+    color-scheme: dark;
     --bg: #000;
-    --fg: oklch(0.88 0.035 75);
-    --dim: oklch(0.65 0.025 75);
-    --line: oklch(0.29 0.018 75);
-    --surface: #0c0c0c;
-    --muted-surface: #151515;
-    --accent: oklch(0.8 0.15 75);
-    --error: #ff8585;
+    --fg: oklch(0.96 0.012 150);
+    --dim: oklch(0.68 0.035 150);
+    --line: oklch(0.3 0.035 150);
+    --surface: oklch(0.13 0.012 150);
+    --muted-surface: oklch(0.19 0.02 150);
+    --accent: oklch(0.86 0.21 145);
+    --glow: color-mix(in oklch, var(--accent) 45%, transparent);
+    --error: oklch(0.72 0.17 25);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -31,7 +34,20 @@
     font-family: 'Ioskeley Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     font-size: 17px;
     min-height: 100vh;
+    caret-color: var(--accent);
   }
+  /* Static phosphor wash and scanlines; painted once, never animated. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(0deg, oklch(0.86 0.21 145 / 0.035) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.86 0.21 145 / 0.07), transparent 70%);
+  }
+  ::selection { background: var(--accent); color: #000; }
   main {
     width: min(680px, calc(100% - 64px));
     position: fixed;
@@ -52,8 +68,6 @@
   .logo {
     width: 88px;
     height: auto;
-    opacity: 1;
-    mix-blend-mode: screen;
   }
   .input-wrap { position: relative; }
   form {
@@ -66,8 +80,8 @@
     background: var(--surface);
   }
   form:focus-within {
-    border-color: color-mix(in oklch, var(--accent) 25%, var(--line));
-    box-shadow: 0 0 2px color-mix(in oklch, var(--accent) 2%, transparent);
+    border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
+    box-shadow: 0 0 12px color-mix(in oklch, var(--accent) 12%, transparent);
   }
   input {
     flex: 1;
@@ -114,10 +128,12 @@
     font-size: 20px;
   }
   #download.ready {
-    background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+    background: color-mix(in oklch, var(--accent) 10%, var(--surface));
     color: var(--accent);
-    box-shadow: 0 0 2px color-mix(in oklch, var(--accent) 3%, transparent);
   }
+  #download.ready .control-icon,
+  .clip-toggle.active .control-icon,
+  #clipInput.active .control-icon { filter: drop-shadow(0 0 3px var(--glow)); }
   button:disabled { color: var(--dim); cursor: not-allowed; }
   .row-controls {
     flex: 0 0 auto;
@@ -184,18 +200,21 @@
     left: 0;
     right: 0;
     max-height: calc(50svh - 100px);
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
   }
   .jobs {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
   }
+  .jobs:empty { display: none; }
   .job {
     border: 1px solid var(--line);
     border-radius: 0;
@@ -234,6 +253,15 @@
     opacity: 0.9;
   }
   .site-icon svg { display: block; width: 100%; height: 100%; }
+  .job-text { min-width: 0; width: 100%; }
+  .job-clip {
+    margin-top: 2px;
+    color: var(--accent);
+    font-size: 12px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  .job.complete .job-clip { color: var(--dim); opacity: 0.75; }
   .job-url {
     min-width: 0;
     width: 100%;
@@ -318,20 +346,53 @@
     touch-action: none;
     background: repeating-linear-gradient(90deg, var(--surface) 0 0.55rem, var(--muted-surface) 0.55rem 1.1rem);
   }
-  .clip-track.has-thumb,
-  .clip-track.has-filmstrip {
+  .clip-track.has-thumb {
     background:
       linear-gradient(90deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.45)),
       var(--clip-thumb);
     background-position: center, center;
-  }
-  .clip-track.has-thumb {
     background-repeat: no-repeat, repeat-x;
     background-size: 100% 100%, auto 100%;
   }
-  .clip-track.has-filmstrip {
-    background-repeat: no-repeat, no-repeat;
-    background-size: 100% 100%, 100% 100%;
+  .clip-track.has-frames { background: #000; }
+  .clip-track.has-frames::before { display: none; }
+  .clip-frames { position: absolute; inset: 0; pointer-events: none; }
+  .clip-frame {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background-repeat: no-repeat;
+    border-right: 1px solid rgba(0, 0, 0, 0.6);
+  }
+  .clip-cursor {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--fg);
+    pointer-events: none;
+  }
+  .frame-tip {
+    position: fixed;
+    z-index: 50;
+    width: 240px;
+    border: 1px solid var(--accent);
+    background: #000;
+    box-shadow: 0 0 14px var(--glow);
+    pointer-events: none;
+  }
+  .frame-tip-image {
+    position: relative;
+    background-repeat: no-repeat;
+    background-color: var(--surface);
+  }
+  .frame-tip-image canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .frame-tip-time {
+    padding: 3px 6px;
+    color: var(--accent);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
   }
   .clip-track::before {
     content: '';
@@ -362,6 +423,7 @@
     transform: translateX(-50%);
     border-inline: 1px solid #000;
     background: var(--accent);
+    box-shadow: 0 0 6px var(--glow);
     cursor: ew-resize;
     padding: 0;
   }
@@ -399,16 +461,21 @@
   }
   .job-state.error { color: var(--error); }
   .bar { height: 2px; background: var(--line); overflow: hidden; }
-  .bar div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+  .bar div {
+    height: 100%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--glow);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.25s linear;
+  }
   .list-actions {
-    position: sticky;
-    bottom: 0;
+    flex: 0 0 auto;
     display: flex;
     justify-content: flex-end;
     gap: 16px;
-    background: var(--bg);
-    padding: 8px 0;
   }
+  .list-actions:not(:has(> :not([hidden]))) { display: none; }
   .control-icon { display: block; width: 20px; height: 20px; pointer-events: none; }
   button:has(.control-icon) { display: inline-flex; align-items: center; justify-content: center; }
   form button { min-width: 44px; }
@@ -473,7 +540,7 @@
 <body>
 <main>
   <header class="brand">
-    <img class="logo" src="/logo-hd.png" width="1254" height="1254" alt="">
+    <img class="logo" src="/logo-hd.png" width="264" height="264" alt="">
   </header>
   <div class="input-wrap">
     <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled data-icon="close"></button>
@@ -574,11 +641,12 @@
   let inputClipOpen = false;
   let inputClipDuration = null;
   let inputClipThumbnail = null;
-  let inputClipFilmstrip = null;
+  let inputClipStoryboards = [];
+  let inputClipPreviewStoryboard = null;
   let inputClipPreviewSource = null;
   let inputClipPreviewOpen = false;
   let inputClipPreviewAutoPlay = false;
-  let inputClipZoom = 1;
+  let inputClipView = newClipView();
   let inputClipLoading = false;
   let inputClipPreviewLoading = false;
   let inputClipMetadataUrl = '';
@@ -591,6 +659,9 @@
   let lastBackspaceAt = 0;
   let clipDragActive = false;
   let renderQueued = false;
+  let renderFrame = 0;
+  let inputClipTrackState = null;
+  const rowElements = new Map();
   const items = [];
 
   const inputClipResizeObserver = new ResizeObserver(() => {
@@ -628,11 +699,12 @@
     inputClipOpen = false;
     inputClipDuration = null;
     inputClipThumbnail = null;
-    inputClipFilmstrip = null;
+    inputClipStoryboards = [];
+    inputClipPreviewStoryboard = null;
     inputClipPreviewSource = null;
     inputClipPreviewOpen = false;
     inputClipPreviewAutoPlay = false;
-    inputClipZoom = 1;
+    resetClipView(inputClipView);
     inputClipLoading = false;
     inputClipPreviewLoading = false;
     inputClipMetadataUrl = '';
@@ -893,11 +965,11 @@
     downloadButton.classList.toggle('ready', !downloadButton.disabled);
   }
 
-  function progressWidth(item) {
-    if (item.status === 'saving' || item.status === 'processing') return '100%';
-    if (item.status === 'starting') return '5%';
-    if (item.status === 'downloading') return (item.percent ?? 0) + '%';
-    return '0';
+  function progressScale(item) {
+    if (item.status === 'saving' || item.status === 'processing') return 1;
+    if (item.status === 'starting') return 0.05;
+    if (item.status === 'downloading') return clamp((item.percent ?? 0) / 100, 0, 1);
+    return 0;
   }
 
   function sourceName(source) {
@@ -1004,14 +1076,49 @@
   }
 
   function statusText(item) {
+    const clip = Boolean(item.activeClip);
     if (item.status === 'downloading' && typeof item.percent === 'number') {
       const downloaded = formatBytes(item.downloadedBytes);
       const total = formatBytes(item.totalBytes);
       const size = downloaded && total ? ' ' + downloaded + ' / ' + total : '';
-      return 'downloading ' + item.percent.toFixed(1) + '%' + size;
+      const label = !clip
+        ? 'downloading '
+        : item.clipMode === 'full'
+          ? 'downloading full video before cutting clip '
+          : 'downloading clip ';
+      return label + item.percent.toFixed(1) + '%' + size;
     }
     if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
+    if (!clip) return item.status;
+    if (item.status === 'starting') return 'starting clip';
+    if (item.status === 'downloading') return 'downloading clip';
+    if (item.status === 'processing') return 'cutting clip';
+    if (item.status === 'saving') return 'saving clip';
     return item.status;
+  }
+
+  function rowClip(item) {
+    if (item.activeClip) return item.activeClip;
+    if (!canEditClip(item) || !hasClipText(item)) return null;
+    const clip = clipPayload(item);
+    return clip.ok ? clip.clip : null;
+  }
+
+  function clipLabel(clip) {
+    return 'clip ' + formatClipTime(clip.start) + '-' + formatClipTime(clip.end) +
+      ' (' + formatClipTime(clip.end - clip.start) + ')';
+  }
+
+  function paintClipTag(tag, item) {
+    const clip = rowClip(item);
+    tag.hidden = !clip;
+    tag.textContent = clip ? clipLabel(clip) : '';
+  }
+
+  // Clip edits skip full renders to keep typing and dragging smooth.
+  function refreshClipTag(item) {
+    const tag = rowElements.get(item.localId)?.querySelector('.job-clip');
+    if (tag) paintClipTag(tag, item);
   }
 
   function displayTitle(item) {
@@ -1075,32 +1182,60 @@
     };
   }
 
-  const CLIP_ZOOMS = [1, 2, 4, 8, 16];
+  const CLIP_ZOOMS = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+  const MIN_VIEW_SECONDS = 2;
 
-  function normalizedClipZoom(value) {
-    return CLIP_ZOOMS.includes(value) ? value : 1;
+  function newClipView() {
+    // zoom null fits the selection automatically. anchor pins the view start
+    // after a drag so releasing a handle does not move the timeline.
+    return { zoom: null, focus: null, anchor: null };
   }
 
-  function stepClipZoom(current, direction) {
-    const zoom = normalizedClipZoom(current);
-    const index = CLIP_ZOOMS.indexOf(zoom);
+  function resetClipView(viewState) {
+    viewState.zoom = null;
+    viewState.focus = null;
+    viewState.anchor = null;
+  }
+
+  function fitClipZoom(values) {
+    const selected = values.end - values.start;
+    if (!values.isKnownDuration || selected >= values.duration * 0.98) return 1;
+    let zoom = 1;
+    for (const level of CLIP_ZOOMS) {
+      if (values.duration / level >= Math.max(selected * 3, MIN_VIEW_SECONDS)) zoom = level;
+    }
+    return zoom;
+  }
+
+  function resolvedClipZoom(values, zoom) {
+    return CLIP_ZOOMS.includes(zoom) ? zoom : fitClipZoom(values);
+  }
+
+  function stepClipZoom(values, current, direction) {
+    const index = CLIP_ZOOMS.indexOf(resolvedClipZoom(values, current));
     return CLIP_ZOOMS[clamp(index + direction, 0, CLIP_ZOOMS.length - 1)];
   }
 
-  function clipTrackView(values, zoom) {
-    const requestedZoom = normalizedClipZoom(zoom);
-    const selectedDuration = Math.max(values.end - values.start, 0.1);
-    const minimumViewDuration = Math.min(values.duration, selectedDuration * 1.15);
-    const requestedViewDuration = values.duration / requestedZoom;
-    const viewDuration = Math.max(requestedViewDuration, minimumViewDuration);
-    const center = values.start + selectedDuration / 2;
-    const start = clamp(center - viewDuration / 2, 0, Math.max(0, values.duration - viewDuration));
-    const end = Math.min(values.duration, start + viewDuration);
+  function clipTrackView(values, viewState) {
+    const zoom = resolvedClipZoom(values, viewState.zoom);
+    const viewDuration = Math.min(values.duration, Math.max(values.duration / zoom, MIN_VIEW_SECONDS));
+    if (viewState.anchor !== null) return viewAt(values, viewState.anchor, viewDuration, zoom);
+    const selected = values.end - values.start;
+    // Zoomed in tighter than the selection: follow the handle being adjusted.
+    let center = values.start + selected / 2;
+    if (viewDuration < selected * 1.15) {
+      center = viewState.focus === 'end' ? values.end : values.start;
+    }
+    return viewAt(values, center - viewDuration / 2, viewDuration, zoom);
+  }
+
+  function viewAt(values, start, viewDuration, zoom) {
+    const clampedStart = clamp(start, 0, Math.max(0, values.duration - viewDuration));
     return {
-      start,
-      end,
-      duration: Math.max(end - start, 0.1),
-      zoom: Math.max(1, values.duration / Math.max(end - start, 0.1)),
+      start: clampedStart,
+      end: Math.min(values.duration, clampedStart + viewDuration),
+      duration: Math.max(viewDuration, 0.1),
+      zoom,
     };
   }
 
@@ -1108,18 +1243,169 @@
     return clamp((seconds - view.start) / view.duration * 100, 0, 100);
   }
 
+  function sanitizeStoryboard(value) {
+    if (!value || typeof value !== 'object') return null;
+    const { width, height, columns, rows, interval, sheets } = value;
+    const sizes = [width, height, columns, rows].every((n) => Number.isInteger(n) && n > 0 && n <= 4096);
+    if (!sizes || typeof interval !== 'number' || !(interval > 0) || !Array.isArray(sheets) || !sheets.length) {
+      return null;
+    }
+    const urls = sheets.map(safeThumbnailUrl);
+    if (urls.some((url) => !url)) return null;
+    return { width, height, columns, rows, interval, sheets: urls };
+  }
+
+  function sanitizeStoryboards(list) {
+    return Array.isArray(list) ? list.map(sanitizeStoryboard).filter(Boolean) : [];
+  }
+
+  function combinedStoryboards(storyboards, previewStoryboard) {
+    return [...(storyboards || []), previewStoryboard]
+      .filter(Boolean)
+      .sort((a, b) => b.width - a.width);
+  }
+
+  // Smallest storyboard that still looks sharp at the given display height.
+  function storyboardForHeight(boards, height) {
+    const sharp = boards.filter((board) => board.height >= height * 0.9);
+    return sharp.at(-1) || boards[0] || null;
+  }
+
+  function storyboardFrame(board, seconds, duration) {
+    const perSheet = board.columns * board.rows;
+    const last = board.sheets.length * perSheet - 1;
+    let index = Math.floor(Math.max(0, seconds) / board.interval);
+    if (duration) index = Math.min(index, Math.floor(Math.max(0, duration - 0.001) / board.interval));
+    index = clamp(index, 0, last);
+    const within = index % perSheet;
+    return {
+      url: board.sheets[Math.floor(index / perSheet)],
+      column: within % board.columns,
+      row: Math.floor(within / board.columns),
+    };
+  }
+
+  // Width-only sizing keeps partial last sheets (fewer rows) undistorted.
+  function paintStoryboardFrame(element, board, frame, width, height) {
+    element.style.backgroundImage = cssImageUrl(frame.url);
+    element.style.backgroundSize = (board.columns * width) + 'px auto';
+    element.style.backgroundPosition = (-frame.column * width) + 'px ' + (-frame.row * height) + 'px';
+  }
+
+  // One shared hover card shows the frame under the pointer or dragged handle.
+  // Storyboard frames appear instantly; once the preview video is downloaded,
+  // a hidden video seeks to the exact time and its frame is drawn on top.
+  const FRAME_TIP_WIDTH = 240;
+  const frameTip = document.createElement('div');
+  frameTip.className = 'frame-tip';
+  frameTip.hidden = true;
+  frameTip.setAttribute('aria-hidden', 'true');
+  const frameTipImage = document.createElement('div');
+  frameTipImage.className = 'frame-tip-image';
+  const frameTipCanvas = document.createElement('canvas');
+  frameTipImage.append(frameTipCanvas);
+  const frameTipTime = document.createElement('p');
+  frameTipTime.className = 'frame-tip-time';
+  frameTip.append(frameTipImage, frameTipTime);
+  document.body.append(frameTip);
+
+  const frameVideo = document.createElement('video');
+  frameVideo.muted = true;
+  frameVideo.preload = 'auto';
+  frameVideo.playsInline = true;
+  const frameSeek = { busy: false, target: null, source: '' };
+
+  function pumpFrameSeek() {
+    if (frameSeek.busy || frameSeek.target === null || frameVideo.readyState < 1) return;
+    const target = frameSeek.target;
+    frameSeek.target = null;
+    frameSeek.busy = true;
+    const end = Number.isFinite(frameVideo.duration) ? Math.max(0, frameVideo.duration - 0.05) : target;
+    frameVideo.currentTime = Math.min(target, end);
+  }
+
+  frameVideo.addEventListener('loadedmetadata', pumpFrameSeek);
+  frameVideo.addEventListener('seeked', () => {
+    frameSeek.busy = false;
+    if (!frameTip.hidden && frameVideo.videoWidth) {
+      const context = frameTipCanvas.getContext('2d');
+      context.drawImage(frameVideo, 0, 0, frameTipCanvas.width, frameTipCanvas.height);
+      frameTipCanvas.hidden = false;
+    }
+    pumpFrameSeek();
+  });
+  frameVideo.addEventListener('error', () => {
+    frameSeek.busy = false;
+  });
+
+  function requestExactFrame(source, seconds) {
+    if (!source) {
+      frameTipCanvas.hidden = true;
+      return;
+    }
+    if (frameSeek.source !== source) {
+      frameSeek.source = source;
+      frameSeek.busy = false;
+      frameTipCanvas.hidden = true;
+      frameVideo.src = source;
+    }
+    frameSeek.target = seconds;
+    pumpFrameSeek();
+  }
+
+  function showFrameTip(track, seconds, view, board, source, duration) {
+    const aspect = board ? board.height / board.width : 9 / 16;
+    const width = FRAME_TIP_WIDTH;
+    const height = Math.round(width * aspect);
+    frameTipImage.style.height = height + 'px';
+    const ratio = window.devicePixelRatio || 1;
+    if (frameTipCanvas.width !== width * ratio || frameTipCanvas.height !== height * ratio) {
+      frameTipCanvas.width = width * ratio;
+      frameTipCanvas.height = height * ratio;
+    }
+    if (board) {
+      paintStoryboardFrame(frameTipImage, board, storyboardFrame(board, seconds, duration), width, height);
+    } else {
+      frameTipImage.style.backgroundImage = '';
+    }
+    frameTipTime.textContent = formatClipTime(seconds);
+    frameTip.hidden = false;
+    if (!board && !source) frameTipImage.hidden = true;
+    else frameTipImage.hidden = false;
+    requestExactFrame(source, seconds);
+
+    const rect = track.getBoundingClientRect();
+    const x = rect.left + percentInView(seconds, view) / 100 * rect.width;
+    const tipHeight = frameTip.offsetHeight;
+    let top = rect.top - tipHeight - 8;
+    if (top < 4) top = rect.bottom + 8;
+    frameTip.style.left = clamp(x - width / 2, 4, window.innerWidth - width - 6) + 'px';
+    frameTip.style.top = top + 'px';
+  }
+
+  function hideFrameTip() {
+    frameTip.hidden = true;
+    frameSeek.target = null;
+  }
+
   function appendClipTrack(parent, options) {
+    const viewState = options.viewState;
+    const boards = combinedStoryboards(options.storyboards, options.previewStoryboard);
+    const hoverBoard = boards[0] || null;
+
     const wrap = document.createElement('div');
     wrap.className = 'clip-track-wrap';
 
     const track = document.createElement('div');
     track.className = 'clip-track';
-    const filmstrip = cssImageUrl(options.filmstrip);
     const thumbnail = cssImageUrl(options.thumbnail);
-    const visual = filmstrip || thumbnail;
-    if (visual) {
-      track.classList.add(filmstrip ? 'has-filmstrip' : 'has-thumb');
-      track.style.setProperty('--clip-thumb', visual);
+    const frames = document.createElement('div');
+    frames.className = 'clip-frames';
+    if (boards.length) {
+      track.classList.add('has-frames');
+    } else if (thumbnail) {
+      track.classList.add('has-thumb');
+      track.style.setProperty('--clip-thumb', thumbnail);
     }
 
     const leftOutside = document.createElement('div');
@@ -1130,6 +1416,10 @@
 
     const fill = document.createElement('div');
     fill.className = 'clip-range-fill';
+
+    const cursor = document.createElement('div');
+    cursor.className = 'clip-cursor';
+    cursor.hidden = true;
 
     const startHandle = document.createElement('button');
     startHandle.type = 'button';
@@ -1157,35 +1447,65 @@
     zoomOut.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomOut, 'minus');
     zoomOut.title = 'zoom out';
+    zoomOut.setAttribute('aria-label', 'zoom out');
 
-    const zoomReset = document.createElement('button');
-    zoomReset.type = 'button';
-    zoomReset.className = 'preview-clip clip-zoom';
-    setButtonIcon(zoomReset, 'reset');
-    zoomReset.title = 'reset zoom';
+    const zoomFit = document.createElement('button');
+    zoomFit.type = 'button';
+    zoomFit.className = 'preview-clip clip-zoom';
+    setButtonIcon(zoomFit, 'reset');
+    zoomFit.title = 'fit selection';
+    zoomFit.setAttribute('aria-label', 'fit selection');
 
     const zoomIn = document.createElement('button');
     zoomIn.type = 'button';
     zoomIn.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomIn, 'add');
     zoomIn.title = 'zoom in';
+    zoomIn.setAttribute('aria-label', 'zoom in');
 
-    zoomControls.append(zoomOut, zoomReset, zoomIn);
+    zoomControls.append(zoomOut, zoomFit, zoomIn);
     tools.append(note, zoomControls);
 
     let dragging = null;
+    let dragView = null;
+    let hovering = false;
+    let framesKey = '';
     let values = clipTrackValues(options.getStartText(), options.getEndText(), options.duration);
-    let view = clipTrackView(values, options.getZoom ? options.getZoom() : 1);
+    let view = clipTrackView(values, viewState);
 
     function setZoom(value) {
-      if (!options.onZoomChange) return;
-      options.onZoomChange(value);
+      viewState.zoom = value;
+      viewState.anchor = null;
       refresh();
+    }
+
+    function renderFrames() {
+      const board = storyboardForHeight(boards, track.clientHeight || 88);
+      const width = track.clientWidth;
+      const height = track.clientHeight;
+      if (!board || !width || !height) return;
+      const key = [board.sheets[0], view.start, view.end, width, height].join('|');
+      if (key === framesKey) return;
+      framesKey = key;
+      const tileWidth = height * board.width / board.height;
+      const count = Math.max(1, Math.ceil(width / tileWidth));
+      const secondsPerTile = view.duration * tileWidth / width;
+      const tiles = [];
+      for (let index = 0; index < count; index += 1) {
+        const tile = document.createElement('div');
+        tile.className = 'clip-frame';
+        tile.style.left = (index * tileWidth) + 'px';
+        tile.style.width = tileWidth + 'px';
+        const seconds = view.start + (index + 0.5) * secondsPerTile;
+        paintStoryboardFrame(tile, board, storyboardFrame(board, seconds, values.duration), tileWidth, height);
+        tiles.push(tile);
+      }
+      frames.replaceChildren(...tiles);
     }
 
     function refresh() {
       values = clipTrackValues(options.getStartText(), options.getEndText(), options.duration);
-      view = clipTrackView(values, options.getZoom ? options.getZoom() : 1);
+      view = dragView || clipTrackView(values, viewState);
       const startPercent = percentInView(values.start, view);
       const endPercent = percentInView(values.end, view);
       leftOutside.style.left = '0';
@@ -1196,6 +1516,8 @@
       fill.style.width = Math.max(0, endPercent - startPercent) + '%';
       startHandle.style.left = startPercent + '%';
       endHandle.style.left = endPercent + '%';
+      startHandle.hidden = values.start < view.start || values.start > view.end;
+      endHandle.hidden = values.end < view.start || values.end > view.end;
       startHandle.setAttribute('aria-valuemin', '0');
       startHandle.setAttribute('aria-valuemax', String(values.end));
       startHandle.setAttribute('aria-valuenow', String(values.start));
@@ -1205,31 +1527,49 @@
       endHandle.setAttribute('aria-valuenow', String(values.end));
       endHandle.setAttribute('aria-valuetext', formatClipTime(values.end));
 
-      if (filmstrip) {
-        const scale = Math.max(1, values.duration / view.duration);
-        let position = 50;
-        if (scale > 1) {
-          position = clamp((view.start / values.duration * scale) / (scale - 1) * 100, 0, 100);
-        }
-        track.style.backgroundSize = '100% 100%, ' + (scale * 100) + '% 100%';
-        track.style.backgroundPosition = 'center center, ' + position + '% center';
-      }
+      if (boards.length) renderFrames();
 
-      const currentZoom = normalizedClipZoom(options.getZoom ? options.getZoom() : 1);
-      zoomOut.disabled = options.disabled || !options.onZoomChange || currentZoom <= 1;
-      zoomReset.disabled = options.disabled || !options.onZoomChange || currentZoom === 1;
-      zoomIn.disabled = options.disabled || !options.onZoomChange || currentZoom >= CLIP_ZOOMS.at(-1);
-      note.textContent = (options.previewLoading ? 'building preview, ' : options.loading ? 'loading timeline, ' : '') +
-        (filmstrip ? 'filmstrip preview, ' : thumbnail ? 'thumbnail preview, ' : '') +
-        'view ' + formatClipTime(view.start) + '-' + formatClipTime(view.end) +
+      const zoomable = !options.disabled && values.isKnownDuration;
+      const zoom = resolvedClipZoom(values, viewState.zoom);
+      zoomOut.disabled = !zoomable || zoom <= 1;
+      zoomFit.disabled = !zoomable || viewState.zoom === null;
+      zoomIn.disabled = !zoomable || zoom >= CLIP_ZOOMS.at(-1) || view.duration <= MIN_VIEW_SECONDS;
+      note.textContent = (options.loading ? 'loading timeline, ' : options.previewLoading ? 'loading exact frames, ' : '') +
+        'selection ' + formatClipTime(values.end - values.start) +
+        ', view ' + formatClipTime(view.start) + '-' + formatClipTime(view.end) +
         ' of ' + formatClipTime(values.duration) +
-        ' ' + view.zoom.toFixed(view.zoom >= 10 ? 0 : 1).replace(/\.0$/, '') + 'x' +
-        (values.isKnownDuration ? '' : ' estimate');
+        ', ' + zoom + 'x' + (viewState.zoom === null && zoom > 1 ? ' fit' : '') +
+        (values.isKnownDuration ? '' : ', length unknown');
+    }
+
+    function secondsAt(clientX) {
+      const rect = track.getBoundingClientRect();
+      return clamp((clientX - rect.left) / rect.width * view.duration + view.start, 0, values.duration);
+    }
+
+    function showTipAt(seconds) {
+      showFrameTip(track, seconds, view, hoverBoard, options.previewSource, values.duration);
+      cursor.hidden = false;
+      cursor.style.left = percentInView(seconds, view) + '%';
+    }
+
+    function hideTip() {
+      cursor.hidden = true;
+      hideFrameTip();
     }
 
     function setFromPointer(event, handle) {
+      let seconds = secondsAt(event.clientX);
+      // Dragging past an edge pans the frozen view instead of stopping there.
       const rect = track.getBoundingClientRect();
-      const seconds = clamp((event.clientX - rect.left) / rect.width * view.duration + view.start, 0, values.duration);
+      if (dragView && (event.clientX < rect.left || event.clientX > rect.right)) {
+        const overflow = event.clientX < rect.left
+          ? (event.clientX - rect.left) / rect.width * view.duration
+          : (event.clientX - rect.right) / rect.width * view.duration;
+        seconds = clamp((overflow < 0 ? view.start : view.end) + overflow, 0, values.duration);
+        const viewStart = overflow < 0 ? seconds : seconds - view.duration;
+        dragView = viewAt(values, viewStart, view.duration, view.zoom);
+      }
       const gap = Math.min(0.1, values.duration / 1000);
       let start = values.start;
       let end = values.end;
@@ -1241,13 +1581,15 @@
       start = clamp(start, 0, values.duration);
       end = clamp(end, 0, values.duration);
       options.onChange(formatClipTime(start), formatClipTime(end));
-      values = { ...values, start, end };
       refresh();
+      showTipAt(handle === 'start' ? values.start : values.end);
     }
 
     function beginDrag(event, handle) {
       if (options.disabled) return;
       dragging = handle;
+      viewState.focus = handle;
+      dragView = view;
       clipDragActive = true;
       track.setPointerCapture?.(event.pointerId);
       event.preventDefault();
@@ -1257,29 +1599,32 @@
 
     function adjustWithKeyboard(event, handle) {
       if (options.disabled) return;
-      const step = event.shiftKey ? 10 : Math.max(0.1, Math.min(1, values.duration / 100));
+      const fine = clamp(view.duration / 200, 0.04, 1);
+      const step = event.shiftKey ? fine * 10 : fine;
+      const gap = Math.min(0.1, values.duration / 1000);
       let seconds;
-      if (event.key === 'Home') seconds = handle === 'start' ? 0 : values.start + Math.min(0.1, values.duration / 1000);
-      else if (event.key === 'End') seconds = handle === 'start' ? values.end - Math.min(0.1, values.duration / 1000) : values.duration;
+      if (event.key === 'Home') seconds = handle === 'start' ? 0 : values.start + gap;
+      else if (event.key === 'End') seconds = handle === 'start' ? values.end - gap : values.duration;
       else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') seconds = (handle === 'start' ? values.start : values.end) - step;
       else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') seconds = (handle === 'start' ? values.start : values.end) + step;
       else return;
       event.preventDefault();
-      const gap = Math.min(0.1, values.duration / 1000);
+      viewState.focus = handle;
       const start = handle === 'start' ? clamp(seconds, 0, values.end - gap) : values.start;
       const end = handle === 'end' ? clamp(seconds, values.start + gap, values.duration) : values.end;
       options.onChange(formatClipTime(start), formatClipTime(end));
-      values = { ...values, start, end };
+      const moved = handle === 'start' ? start : end;
+      if (moved < view.start || moved > view.end) viewState.anchor = null;
       refresh();
+      showTipAt(handle === 'start' ? values.start : values.end);
       if (options.onChangeEnd) options.onChangeEnd();
     }
 
-    zoomOut.addEventListener('click', () => setZoom(stepClipZoom(options.getZoom ? options.getZoom() : 1, -1)));
-    zoomReset.addEventListener('click', () => setZoom(1));
-    zoomIn.addEventListener('click', () => setZoom(stepClipZoom(options.getZoom ? options.getZoom() : 1, 1)));
+    zoomOut.addEventListener('click', () => setZoom(stepClipZoom(values, viewState.zoom, -1)));
+    zoomFit.addEventListener('click', () => setZoom(null));
+    zoomIn.addEventListener('click', () => setZoom(stepClipZoom(values, viewState.zoom, 1)));
     track.addEventListener('pointerdown', (event) => {
-      const rect = track.getBoundingClientRect();
-      const seconds = clamp((event.clientX - rect.left) / rect.width * view.duration + view.start, 0, values.duration);
+      const seconds = secondsAt(event.clientX);
       const handle = Math.abs(seconds - values.start) <= Math.abs(seconds - values.end) ? 'start' : 'end';
       beginDrag(event, handle);
     });
@@ -1287,18 +1632,39 @@
     endHandle.addEventListener('pointerdown', (event) => beginDrag(event, 'end'));
     startHandle.addEventListener('keydown', (event) => adjustWithKeyboard(event, 'start'));
     endHandle.addEventListener('keydown', (event) => adjustWithKeyboard(event, 'end'));
+    startHandle.addEventListener('blur', hideTip);
+    endHandle.addEventListener('blur', hideTip);
+    track.addEventListener('pointerenter', () => {
+      hovering = true;
+    });
+    track.addEventListener('pointerleave', () => {
+      hovering = false;
+      if (!dragging) hideTip();
+    });
     track.addEventListener('pointermove', (event) => {
       if (dragging) setFromPointer(event, dragging);
+      else if (event.pointerType !== 'touch') showTipAt(secondsAt(event.clientX));
     });
     function finishDrag() {
-      if (dragging && options.onChangeEnd) options.onChangeEnd();
+      if (dragging) {
+        viewState.zoom = view.zoom;
+        viewState.anchor = view.start;
+        if (options.onChangeEnd) options.onChangeEnd();
+      }
       dragging = null;
+      dragView = null;
+      refresh();
+      if (!hovering) hideTip();
       endClipDrag();
     }
     track.addEventListener('pointerup', finishDrag);
     track.addEventListener('pointercancel', finishDrag);
 
-    track.append(leftOutside, rightOutside, fill, startHandle, endHandle);
+    new ResizeObserver(() => {
+      if (track.isConnected && boards.length) renderFrames();
+    }).observe(track);
+
+    track.append(frames, leftOutside, rightOutside, fill, cursor, startHandle, endHandle);
     wrap.append(track, tools);
     parent.append(wrap);
     refresh();
@@ -1414,21 +1780,39 @@
   }
 
   function renderInputClipTrack(showPanel) {
+    if (!showPanel) {
+      inputClipTrack.replaceChildren();
+      inputClipTrackState = null;
+      return;
+    }
+    // updateControls runs on every keystroke and render; rebuilding the track
+    // each time is wasted work unless its inputs changed.
+    const key = [
+      inputClipDuration,
+      inputClipThumbnail,
+      inputClipStoryboards.length,
+      inputClipPreviewStoryboard?.sheets[0],
+      inputClipPreviewSource,
+      inputClipLoading,
+      inputClipPreviewLoading,
+    ].join('|');
+    if (inputClipTrackState && inputClipTrackState.key === key) {
+      inputClipTrackState.refresh();
+      return;
+    }
     inputClipTrack.replaceChildren();
-    if (!showPanel) return;
-    appendClipTrack(inputClipTrack, {
+    const refresh = appendClipTrack(inputClipTrack, {
       duration: inputClipDuration,
       thumbnail: inputClipThumbnail,
-      filmstrip: inputClipFilmstrip,
+      storyboards: inputClipStoryboards,
+      previewStoryboard: inputClipPreviewStoryboard,
+      previewSource: inputClipPreviewSource,
       loading: inputClipLoading,
       previewLoading: inputClipPreviewLoading,
       disabled: false,
       getStartText: () => inputClipStart.value,
       getEndText: () => inputClipEnd.value,
-      getZoom: () => inputClipZoom,
-      onZoomChange: (zoom) => {
-        inputClipZoom = zoom;
-      },
+      viewState: inputClipView,
       onChange: (start, end) => {
         inputClipStart.value = start;
         inputClipEnd.value = end;
@@ -1442,6 +1826,7 @@
         replayInputPreview();
       },
     });
+    inputClipTrackState = { key, refresh };
   }
 
   function renderInputClipPreview(showPanel) {
@@ -1535,6 +1920,8 @@
     startInput.setAttribute('aria-label', 'clip start time');
     startInput.addEventListener('input', () => {
       item.clipStart = startInput.value;
+      resetClipView(item.clipView);
+      item.clipView.focus = 'start';
       if (clearClipValidation(item)) {
         renderAndRestoreClipFocus(item, 'start', startInput.selectionStart, startInput.selectionEnd);
       } else if (canEditClip(item)) {
@@ -1542,6 +1929,7 @@
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
+        refreshClipTag(item);
         updateControls();
       }
     });
@@ -1560,6 +1948,8 @@
     endInput.setAttribute('aria-label', 'clip end time');
     endInput.addEventListener('input', () => {
       item.clipEnd = endInput.value;
+      resetClipView(item.clipView);
+      item.clipView.focus = 'end';
       if (clearClipValidation(item)) {
         renderAndRestoreClipFocus(item, 'end', endInput.selectionStart, endInput.selectionEnd);
       } else if (canEditClip(item)) {
@@ -1567,6 +1957,7 @@
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
+        refreshClipTag(item);
         updateControls();
       }
     });
@@ -1586,7 +1977,7 @@
       item.clipPreviewAutoPlay = false;
       if (item.clipPreviewReplayTimer) clearTimeout(item.clipPreviewReplayTimer);
       item.clipPreviewReplayTimer = null;
-      item.clipZoom = 1;
+      item.clipView = newClipView();
       clearClipValidation(item);
       render();
     });
@@ -1640,16 +2031,15 @@
     refreshTrack = appendClipTrack(panel, {
       duration: item.duration,
       thumbnail: item.thumbnail,
-      filmstrip: item.filmstrip,
+      storyboards: item.storyboards,
+      previewStoryboard: item.previewStoryboard,
+      previewSource: item.previewSource,
       loading: item.titleLoading,
       previewLoading: item.previewLoading,
       disabled: !canEditClip(item),
       getStartText: () => item.clipStart,
       getEndText: () => item.clipEnd,
-      getZoom: () => item.clipZoom,
-      onZoomChange: (zoom) => {
-        item.clipZoom = zoom;
-      },
+      viewState: item.clipView,
       onChange: (start, end) => {
         item.clipStart = start;
         item.clipEnd = end;
@@ -1658,6 +2048,7 @@
         clearClipValidation(item);
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
+        refreshClipTag(item);
         updateControls();
       },
       onChangeEnd: () => {
@@ -1666,7 +2057,7 @@
     });
     renderRowPreview();
     if (item.clipPreviewOpen) panel.append(previewPanel);
-    if (canEditClip(item) && !item.filmstrip && !item.previewRequested) {
+    if (canEditClip(item) && !item.previewSource && !item.previewRequested) {
       item.previewRequested = true;
       window.setTimeout(() => loadPreview(item), 0);
     }
@@ -1685,7 +2076,34 @@
     }
   }
 
+  // Coalesces background updates (titles, previews) into one render per frame.
+  function scheduleRender() {
+    if (renderFrame) return;
+    renderFrame = requestAnimationFrame(() => {
+      renderFrame = 0;
+      render();
+    });
+  }
+
+  // Progress ticks only change the bar and status text, so patch those in
+  // place instead of rebuilding every row.
+  function patchProgress(item) {
+    const row = rowElements.get(item.localId);
+    const fill = row?.querySelector('.bar > div');
+    const state = row?.querySelector('.job-state');
+    if (!fill || !state || renderFrame || renderQueued) {
+      scheduleRender();
+      return;
+    }
+    fill.style.transform = 'scaleX(' + progressScale(item) + ')';
+    state.textContent = statusText(item);
+  }
+
   function render() {
+    if (renderFrame) {
+      cancelAnimationFrame(renderFrame);
+      renderFrame = 0;
+    }
     if (clipDragActive) {
       renderQueued = true;
       return;
@@ -1697,8 +2115,10 @@
       if (video) reusableVideos.set(row.dataset.localId, video);
     }
     const active = activeCount();
+    rowElements.clear();
     const nodes = items.map((item) => {
       const row = document.createElement('section');
+      rowElements.set(item.localId, row);
       row.className = 'job';
       row.dataset.localId = String(item.localId);
       row.classList.toggle('complete', item.status === 'complete');
@@ -1722,7 +2142,14 @@
       url.title = item.url;
       url.textContent = displayTitle(item);
 
-      title.append(icon, url);
+      const text = document.createElement('div');
+      text.className = 'job-text';
+      text.append(url);
+      const tag = document.createElement('p');
+      tag.className = 'job-clip';
+      text.append(tag);
+      paintClipTag(tag, item);
+      title.append(icon, text);
 
       const controls = document.createElement('div');
       controls.className = 'row-controls';
@@ -1758,7 +2185,7 @@
       remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued item');
       remove.addEventListener('click', () => removeItem(item));
 
-      if (item.format !== 'audio' && sourceForUrl(item.url) !== 'discord') controls.append(clipToggle);
+      if (canEditClip(item)) controls.append(clipToggle);
       controls.append(downloadOne, remove);
       top.append(title, controls);
 
@@ -1780,7 +2207,7 @@
           const bar = document.createElement('div');
           bar.className = 'bar';
           const fill = document.createElement('div');
-          fill.style.width = progressWidth(item);
+          fill.style.transform = 'scaleX(' + progressScale(item) + ')';
           bar.append(fill);
           row.append(bar, state);
         }
@@ -1816,14 +2243,15 @@
       titleLoading: !initialTitle && selectedFormat !== 'audio',
       duration: null,
       thumbnail: null,
-      filmstrip: null,
+      storyboards: [],
+      previewStoryboard: null,
       previewSource: null,
       previewLoading: false,
       previewRequested: false,
       clipPreviewOpen: false,
       clipPreviewAutoPlay: false,
       clipPreviewReplayTimer: null,
-      clipZoom: 1,
+      clipView: newClipView(),
       format: selectedFormat,
       playlist,
       status: 'queued',
@@ -1835,6 +2263,9 @@
       totalBytes: null,
       error: null,
       jobId: null,
+      activeClip: null,
+      clipMode: null,
+      attempt: 0,
       source: null,
       metadataPromise: null,
     };
@@ -1861,6 +2292,7 @@
       if (response.ok) {
         item.duration = clipDurationFromMetadata(data);
         item.thumbnail = safeThumbnailUrl(data.thumbnail) || null;
+        item.storyboards = sanitizeStoryboards(data.storyboards);
         if (item.format !== 'audio' && sourceForUrl(item.url) !== 'discord') {
           if (data.clip && !hasClipText(item)) {
             item.clipStart = formatClipTime(data.clip.start);
@@ -1877,13 +2309,13 @@
     } finally {
       if (items.includes(item)) {
         item.titleLoading = false;
-        render();
+        scheduleRender();
       }
     }
   }
 
   async function pollPreview(previewId, isCurrent) {
-    for (let attempt = 0; attempt < 90; attempt += 1) {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
       if (!isCurrent()) return null;
       const response = await fetch('/api/previews/' + previewId);
       let data = {};
@@ -1893,7 +2325,7 @@
       if (!response.ok) throw new Error(data.error || 'preview failed');
       if (data.status === 'done' && data.spriteUrl) return data;
       if (data.status === 'error') throw new Error(data.error || 'preview failed');
-      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
     }
     throw new Error('preview timed out');
   }
@@ -1919,13 +2351,13 @@
   }
 
   async function loadPreview(item) {
-    if (!items.includes(item) || (item.filmstrip && item.previewSource) || item.previewLoading) return;
+    if (!items.includes(item) || item.previewSource || item.previewLoading) return;
     item.previewLoading = true;
-    render();
+    scheduleRender();
     try {
       const preview = await startPreview(item.url, () => items.includes(item));
       if (!items.includes(item) || !preview) return;
-      item.filmstrip = safeThumbnailUrl(preview.spriteUrl) || null;
+      item.previewStoryboard = sanitizeStoryboard(preview.storyboard);
       item.previewSource = safeThumbnailUrl(preview.sourceUrl) || null;
       if (typeof preview.duration === 'number' && Number.isFinite(preview.duration)) {
         item.duration = Math.max(item.duration || 0, preview.duration);
@@ -1933,15 +2365,15 @@
     } catch (error) {
       if (error.status === 429 && items.includes(item)) {
         window.setTimeout(() => {
-          if (!items.includes(item) || item.filmstrip || !canEditClip(item)) return;
+          if (!items.includes(item) || item.previewSource || !canEditClip(item)) return;
           item.previewRequested = false;
-          render();
+          scheduleRender();
         }, 1500);
       }
     } finally {
       if (items.includes(item)) {
         item.previewLoading = false;
-        render();
+        scheduleRender();
       }
     }
   }
@@ -1964,12 +2396,12 @@
 
   async function loadInputClipPreview() {
     const url = firstInputUrl();
-    if (!url || inputClipPreviewLoading || (inputClipFilmstrip && inputClipPreviewSource)) return;
-    if (url === inputClipPreviewUrl && inputClipFilmstrip && inputClipPreviewSource) return;
+    if (!url || inputClipPreviewLoading) return;
+    if (url === inputClipPreviewUrl && inputClipPreviewSource) return;
     const token = inputClipPreviewToken + 1;
     inputClipPreviewToken = token;
     inputClipPreviewUrl = url;
-    inputClipFilmstrip = null;
+    inputClipPreviewStoryboard = null;
     inputClipPreviewSource = null;
     inputClipPreviewLoading = true;
     updateInputClipControls(urlInput.value.trim().length > 0);
@@ -1977,7 +2409,7 @@
     try {
       const preview = await startPreview(url, () => token === inputClipPreviewToken);
       if (token !== inputClipPreviewToken || !preview) return;
-      inputClipFilmstrip = safeThumbnailUrl(preview.spriteUrl) || null;
+      inputClipPreviewStoryboard = sanitizeStoryboard(preview.storyboard);
       inputClipPreviewSource = safeThumbnailUrl(preview.sourceUrl) || null;
       if (typeof preview.duration === 'number' && Number.isFinite(preview.duration)) {
         inputClipDuration = Math.max(inputClipDuration || 0, preview.duration);
@@ -2000,6 +2432,7 @@
     inputClipMetadataUrl = url;
     inputClipDuration = null;
     inputClipThumbnail = null;
+    inputClipStoryboards = [];
     inputClipLoading = true;
     updateInputClipControls(urlInput.value.trim().length > 0);
 
@@ -2016,6 +2449,7 @@
       if (token !== inputClipMetadataToken || !response.ok) return;
       inputClipDuration = clipDurationFromMetadata(data);
       inputClipThumbnail = safeThumbnailUrl(data.thumbnail) || null;
+      inputClipStoryboards = sanitizeStoryboards(data.storyboards);
       if (data.clip && !hasInputClipText()) {
         inputClipStart.value = formatClipTime(data.clip.start);
         inputClipEnd.value = formatClipTime(data.clip.end);
@@ -2043,11 +2477,12 @@
     if (url === inputClipMetadataUrl) return;
     inputClipDuration = null;
     inputClipThumbnail = null;
-    inputClipFilmstrip = null;
+    inputClipStoryboards = [];
+    inputClipPreviewStoryboard = null;
     inputClipPreviewSource = null;
     inputClipPreviewOpen = false;
     inputClipPreviewAutoPlay = false;
-    inputClipZoom = 1;
+    resetClipView(inputClipView);
     inputClipMetadataUrl = '';
     inputClipPreviewUrl = '';
     inputClipLoading = false;
@@ -2165,13 +2600,20 @@
   async function startItem(item) {
     if (item.status !== 'queued') return;
 
+    // A row can be canceled and retried while an older POST or event stream is
+    // still in flight. Each start gets an attempt number so stale responses
+    // cannot attach their job to the retried row.
+    const attempt = item.attempt + 1;
+    item.attempt = attempt;
+    const isCurrent = () => item.attempt === attempt && items.includes(item);
+
     item.status = 'starting';
     item.error = null;
     render();
 
     if (item.titleLoading && hasClipText(item) && item.metadataPromise) {
       await item.metadataPromise;
-      if (item.status !== 'starting') return;
+      if (!isCurrent() || item.status !== 'starting') return;
     }
 
     const clip = clipPayload(item);
@@ -2185,6 +2627,8 @@
     }
 
     setStatus('');
+    item.activeClip = clip.clip;
+    render();
     const body = { url: item.url, format: item.format };
     if (clip.clip) body.clip = clip.clip;
     if (item.playlist) body.playlist = item.playlist;
@@ -2202,26 +2646,35 @@
         data = {};
       }
       if (!response.ok) {
-        finishItem(item, 'failed', data.error || 'could not start download');
+        if (isCurrent() && item.status === 'starting') {
+          finishItem(item, 'failed', data.error || 'could not start download');
+        }
         return;
       }
     } catch {
-      finishItem(item, 'failed', 'could not reach server');
+      if (isCurrent() && item.status === 'starting') {
+        finishItem(item, 'failed', 'could not reach server');
+      }
       return;
     }
 
-    item.jobId = data.jobId;
-    if (item.status === 'canceled') {
-      await cancelServerJob(item);
-      render();
-      if (groupRunning) runQueue();
+    if (!isCurrent() || item.status !== 'starting') {
+      await cancelServerJobId(data.jobId);
+      if (isCurrent()) {
+        render();
+        if (groupRunning) runQueue();
+      }
       return;
     }
+    item.jobId = data.jobId;
+    item.clipMode = data.clipMode === 'section' || data.clipMode === 'full' ? data.clipMode : null;
 
     const source = new EventSource('/api/jobs/' + item.jobId + '/events');
     item.source = source;
+    const isLive = () => item.source === source && isCurrent();
 
     source.addEventListener('progress', (event) => {
+      if (!isLive()) return;
       let progress;
       try {
         progress = JSON.parse(event.data);
@@ -2236,28 +2689,31 @@
       } else {
         item.status = 'processing';
       }
-      render();
+      patchProgress(item);
     });
 
     source.addEventListener('done', () => {
       source.close();
+      if (!isLive()) return;
       item.source = null;
       item.status = 'saving';
       render();
       downloadFile(item);
-      window.setTimeout(() => finishItem(item, 'complete'), 700);
+      window.setTimeout(() => {
+        if (item.attempt === attempt && item.status === 'saving') finishItem(item, 'complete');
+      }, 700);
     });
 
     source.addEventListener('failed', (event) => {
-      finishItem(item, 'failed', event.data || 'failed');
+      if (isLive()) finishItem(item, 'failed', event.data || 'failed');
     });
 
     source.addEventListener('canceled', () => {
-      finishItem(item, 'canceled');
+      if (isLive()) finishItem(item, 'canceled');
     });
 
     source.onerror = () => {
-      if (isActive(item)) finishItem(item, 'failed', 'lost connection to server');
+      if (isLive() && isActive(item)) finishItem(item, 'failed', 'lost connection to server');
     };
   }
 
@@ -2269,6 +2725,8 @@
     item.error = null;
     item.jobId = null;
     item.source = null;
+    item.activeClip = null;
+    item.clipMode = null;
   }
 
   function reactivateCanceledItems() {
@@ -2297,11 +2755,15 @@
     render();
   }
 
-  async function cancelServerJob(item) {
-    if (!item.jobId) return;
+  async function cancelServerJobId(jobId) {
+    if (!jobId) return;
     try {
-      await fetch('/api/jobs/' + item.jobId, { method: 'DELETE' });
+      await fetch('/api/jobs/' + jobId, { method: 'DELETE' });
     } catch {}
+  }
+
+  function cancelServerJob(item) {
+    return cancelServerJobId(item.jobId);
   }
 
   function removeItem(item) {
@@ -2371,11 +2833,15 @@
   });
 
   inputClipStart.addEventListener('input', () => {
+    resetClipView(inputClipView);
+    inputClipView.focus = 'start';
     setStatus('');
     scheduleInputPreviewReplay();
     updateControls();
   });
   inputClipEnd.addEventListener('input', () => {
+    resetClipView(inputClipView);
+    inputClipView.focus = 'end';
     setStatus('');
     scheduleInputPreviewReplay();
     updateControls();
@@ -2418,7 +2884,7 @@
     inputClipEnd.value = '';
     inputClipPreviewOpen = false;
     inputClipPreviewAutoPlay = false;
-    inputClipZoom = 1;
+    resetClipView(inputClipView);
     setStatus('');
     updateControls();
     inputClipStart.focus();

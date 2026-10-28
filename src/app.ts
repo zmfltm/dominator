@@ -274,7 +274,7 @@ app.post('/api/jobs', async (c) => {
   }
   try {
     const job = await startJob(parsed.value);
-    return c.json({ jobId: job.id }, 201);
+    return c.json({ jobId: job.id, ...(job.clipMode ? { clipMode: job.clipMode } : {}) }, 201);
   } catch (err) {
     if (err instanceof JobLimitError) {
       return c.json({ error: err.message }, 429);
