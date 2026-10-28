@@ -3,9 +3,12 @@ import {
   buildFilmstripFfmpegArgs,
   buildPreviewYtDlpArgs,
   isPreviewStale,
+  PREVIEW_FRAME_COLUMNS,
   PREVIEW_FRAME_COUNT,
   PREVIEW_FRAME_HEIGHT,
+  PREVIEW_FRAME_ROWS,
   PREVIEW_FRAME_WIDTH,
+  previewStoryboard,
   usablePreviewDuration,
 } from './previews';
 
@@ -28,7 +31,7 @@ describe('preview args', () => {
     const filter = args[args.indexOf('-vf') + 1];
 
     expect(filter).toContain(`scale=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}`);
-    expect(filter).toContain(`tile=${PREVIEW_FRAME_COUNT}x1`);
+    expect(filter).toContain(`tile=${PREVIEW_FRAME_COLUMNS}x${PREVIEW_FRAME_ROWS}`);
     expect(args.at(-1)).toBe('/tmp/sprite.jpg');
   });
 
@@ -36,7 +39,20 @@ describe('preview args', () => {
     const args = buildFilmstripFfmpegArgs('/tmp/source.mp4', '/tmp/sprite.jpg', 3600);
     const filter = args[args.indexOf('-vf') + 1];
 
-    expect(filter).toContain('fps=0.001389');
+    expect(filter).toContain(`fps=${(PREVIEW_FRAME_COUNT / 3600).toFixed(6)}`);
+  });
+});
+
+describe('previewStoryboard', () => {
+  it('describes the sprite grid with evenly spaced frames', () => {
+    expect(previewStoryboard({ id: 'abc', duration: 300 })).toEqual({
+      width: PREVIEW_FRAME_WIDTH,
+      height: PREVIEW_FRAME_HEIGHT,
+      columns: PREVIEW_FRAME_COLUMNS,
+      rows: PREVIEW_FRAME_ROWS,
+      interval: 300 / PREVIEW_FRAME_COUNT,
+      sheets: ['/api/previews/abc/sprite'],
+    });
   });
 });
 

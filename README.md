@@ -30,6 +30,8 @@ docker compose up -d --build
 
 Keep yt-dlp updated if downloads fail. Run locally; do not expose port 3000 publicly.
 
+Clips download only the selected section when ffmpeg can open network URLs. Fully static ffmpeg builds (such as the johnvansickle.com ones) crash on that, so the app falls back to downloading the whole video and trimming it, and logs a warning at startup. Your distro's ffmpeg package avoids this.
+
 A single download is stopped after 2 hours. Set `DOMINATOR_JOB_TIMEOUT_MS` to change that limit.
 
 ## Tailscale

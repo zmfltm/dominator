@@ -53,6 +53,17 @@ describe('parseVideoMetadataOutput', () => {
     });
   });
 
+  it('reads YouTube storyboards from the second output line', () => {
+    const formats = [{
+      format_id: 'sb1', width: 160, height: 90, columns: 5, rows: 5, fps: 0.1,
+      fragments: [{ url: 'https://i.ytimg.com/sb/abc/M0.jpg' }],
+    }];
+    const output = `${JSON.stringify({ title: 'Example Video' })}\n${JSON.stringify(formats)}\n`;
+    expect(parseVideoMetadataOutput(output)?.storyboards).toEqual([
+      { width: 160, height: 90, columns: 5, rows: 5, interval: 10, sheets: ['https://i.ytimg.com/sb/abc/M0.jpg'] },
+    ]);
+  });
+
   it('ignores non-http thumbnail URLs', () => {
     const output = JSON.stringify({ title: 'Example Video', thumbnail: 'file:///tmp/thumb.jpg' });
     expect(parseVideoMetadataOutput(output)).toEqual({

@@ -6,15 +6,20 @@ import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { fetchVideoMetadata } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
+import type { Storyboard } from './storyboard';
 import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const PREVIEW_TEMP_PREFIX = 'dominator-preview-';
 export const PREVIEW_TTL_MS = 60 * 60 * 1000;
 export const PREVIEW_TIMEOUT_MS = 2 * 60 * 1000;
 export const MAX_RUNNING_PREVIEWS = 2;
-export const PREVIEW_FRAME_COUNT = 5;
-export const PREVIEW_FRAME_WIDTH = 120;
-export const PREVIEW_FRAME_HEIGHT = 68;
+export const PREVIEW_FRAME_COLUMNS = 10;
+export const PREVIEW_FRAME_ROWS = 3;
+export const PREVIEW_FRAME_COUNT = PREVIEW_FRAME_COLUMNS * PREVIEW_FRAME_ROWS;
+export const PREVIEW_FRAME_WIDTH = 160;
+export const PREVIEW_FRAME_HEIGHT = 90;
+// Frame spacing when the duration is unknown; matches the fallback fps below.
+const UNKNOWN_DURATION_INTERVAL = 10;
 
 export class PreviewLimitError extends Error {
   constructor(limit = MAX_RUNNING_PREVIEWS) {
@@ -58,6 +63,19 @@ export function previewSourceUrl(preview: Pick<Preview, 'id'>): string {
   return `/api/previews/${preview.id}/source`;
 }
 
+export function previewStoryboard(preview: Pick<Preview, 'id' | 'duration'>): Storyboard {
+  return {
+    width: PREVIEW_FRAME_WIDTH,
+    height: PREVIEW_FRAME_HEIGHT,
+    columns: PREVIEW_FRAME_COLUMNS,
+    rows: PREVIEW_FRAME_ROWS,
+    interval: preview.duration
+      ? Math.round(preview.duration / PREVIEW_FRAME_COUNT * 1000) / 1000
+      : UNKNOWN_DURATION_INTERVAL,
+    sheets: [previewSpriteUrl(preview)],
+  };
+}
+
 export function previewStatusBody(preview: Preview): Record<string, unknown> {
   return {
     previewId: preview.id,
@@ -66,6 +84,7 @@ export function previewStatusBody(preview: Preview): Record<string, unknown> {
     ...(preview.status === 'done' ? {
       spriteUrl: previewSpriteUrl(preview),
       sourceUrl: previewSourceUrl(preview),
+      storyboard: previewStoryboard(preview),
     } : {}),
     ...(preview.status === 'error' ? { error: preview.error ?? 'preview failed' } : {}),
   };
@@ -75,12 +94,21 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
   return [
     '--ignore-config',
     ...youtubeJsRuntimeArgs(url),
+    // Plain HTTPS formats download far faster than HLS fragments, H.264 plays
+    // in every browser, and the sort keeps the original audio language.
     '-f',
-    'worst[height<=360][ext=mp4]/worst[height<=360]/worstvideo*[height<=360][ext=mp4]+worstaudio[ext=m4a]/worstvideo*[height<=360]+worstaudio/worst',
+    [
+      'bv*[height<=360][ext=mp4][protocol^=http][vcodec^=avc1]+ba[ext=m4a][protocol^=http]',
+      'b[height<=360][ext=mp4][protocol^=http]',
+      'bv*[height<=360][ext=mp4]+ba[ext=m4a]',
+      'b[height<=360]',
+      'bv*[height<=360]+ba',
+      'w',
+    ].join('/'),
+    '-S',
+    'lang,res:240,+br',
     '--merge-output-format',
     'mp4',
-    '--concurrent-fragments',
-    '4',
     '--no-playlist',
     '--no-warnings',
     '--max-filesize',
@@ -108,7 +136,7 @@ export function buildFilmstripFfmpegArgs(
     `fps=${fps.toFixed(6)}`,
     `scale=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}:force_original_aspect_ratio=decrease`,
     `pad=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-    `tile=${PREVIEW_FRAME_COUNT}x1`,
+    `tile=${PREVIEW_FRAME_COLUMNS}x${PREVIEW_FRAME_ROWS}`,
   ].join(',');
 
   return [

@@ -26,8 +26,15 @@ export const JOB_TIMEOUT_MS = parseJobTimeoutMs(process.env.DOMINATOR_JOB_TIMEOU
 // yt-dlp can print several progress lines per second per job. Clients only
 // need a few updates a second, so intermediate lines are coalesced.
 export const PROGRESS_INTERVAL_MS = 250;
-// Parallel fragment fetches speed up DASH/HLS sources (Reddit, X, TikTok).
-export const CONCURRENT_FRAGMENTS = 4;
+
+// When ffmpeg can open network URLs, clips download only the selected section.
+// Otherwise the whole video is downloaded and trimmed locally. Set at startup
+// from probeFfmpegNetwork().
+let sectionDownloads = false;
+
+export function setSectionDownloads(enabled: boolean): void {
+  sectionDownloads = enabled;
+}
 
 export class JobLimitError extends Error {
   constructor(limit = MAX_RUNNING_JOBS) {
@@ -40,6 +47,9 @@ export interface Job {
   id: string;
   dir: string;
   status: 'running' | 'done' | 'error' | 'canceled';
+  // How a clip is produced: only the section is downloaded, or the full video
+  // is downloaded and trimmed locally.
+  clipMode?: 'section' | 'full';
   filePath?: string;
   error?: string;
   events: EventEmitter;
@@ -128,13 +138,19 @@ export function shouldEmitProgress(
   return now - lastAt >= PROGRESS_INTERVAL_MS;
 }
 
-export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
+export function buildYtDlpArgs(
+  request: JobRequest,
+  dir: string,
+  options: { sections?: boolean } = {},
+): string[] {
+  const section = options.sections && request.clip
+    ? ['--download-sections', `*${request.clip.start}-${request.clip.end}`]
+    : [];
   return [
     '--ignore-config',
     ...youtubeJsRuntimeArgs(request.url),
     ...FORMAT_ARGS[request.format],
-    '--concurrent-fragments',
-    String(CONCURRENT_FRAGMENTS),
+    ...section,
     ...(isSoundCloudUrl(request.url) ? ['--embed-thumbnail'] : []),
     '--no-playlist',
     '--progress',
@@ -301,7 +317,9 @@ export async function startJob(request: JobRequest): Promise<Job> {
   }, JOB_TIMEOUT_MS);
   job.deadline.unref();
 
-  const args = buildYtDlpArgs(request, dir);
+  const useSections = sectionDownloads && Boolean(request.clip);
+  if (request.clip) job.clipMode = useSections ? 'section' : 'full';
+  const args = buildYtDlpArgs(request, dir, { sections: useSections });
   let child: ChildProcessByStdio<null, Readable, Readable>;
   try {
     child = spawn('yt-dlp', args, {
@@ -358,7 +376,7 @@ export async function startJob(request: JobRequest): Promise<Job> {
         failJob(job, 'yt-dlp finished but produced no file');
         return;
       }
-      job.filePath = request.clip
+      job.filePath = request.clip && !useSections
         ? await trimDownloadedFile(job, filePath, request.clip, request.format)
         : filePath;
       if (job.status !== 'running') return;

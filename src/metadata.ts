@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
+import { parseYouTubeStoryboards, type Storyboard } from './storyboard';
 import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const METADATA_TIMEOUT_MS = 15_000;
@@ -8,6 +9,9 @@ export const MAX_RUNNING_METADATA = 7;
 // looked up again for clip timelines and previews, so results are kept briefly.
 export const METADATA_CACHE_TTL_MS = 10 * 60 * 1000;
 export const MAX_CACHED_METADATA = 200;
+// The formats line lists every format with its fragments, roughly 20 KB for
+// YouTube. Anything past the cap is dropped and the storyboard is skipped.
+const MAX_METADATA_OUTPUT = 2 * 1024 * 1024;
 
 let runningMetadata = 0;
 const metadataWaiters: Array<() => void> = [];
@@ -25,6 +29,7 @@ export interface VideoMetadata {
   title: string;
   duration?: number;
   thumbnail?: string;
+  storyboards?: Storyboard[];
   clip?: {
     start: number;
     end: number;
@@ -39,7 +44,10 @@ export function firstNonEmptyLine(output: string): string | undefined {
 }
 
 export function parseVideoMetadataOutput(output: string): VideoMetadata | undefined {
-  const line = firstNonEmptyLine(output);
+  const [line, formatsLine] = output
+    .split('\n')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
   if (!line) return undefined;
 
   let data: Record<string, unknown>;
@@ -58,10 +66,21 @@ export function parseVideoMetadataOutput(output: string): VideoMetadata | undefi
   const metadata: VideoMetadata = { title: data.title };
   if (duration !== undefined) metadata.duration = duration;
   if (thumbnail !== undefined) metadata.thumbnail = thumbnail;
+  const storyboards = parseStoryboardLine(formatsLine);
+  if (storyboards.length > 0) metadata.storyboards = storyboards;
   if (clipStart !== undefined && clipEnd !== undefined && clipEnd > clipStart) {
     metadata.clip = { start: clipStart, end: clipEnd };
   }
   return metadata;
+}
+
+function parseStoryboardLine(line: string | undefined): Storyboard[] {
+  if (!line) return [];
+  try {
+    return parseYouTubeStoryboards(JSON.parse(line));
+  } catch {
+    return [];
+  }
 }
 
 function parseOptionalSeconds(value: unknown): number | undefined {
@@ -158,6 +177,8 @@ export function buildMetadataYtDlpArgs(url: string): string[] {
     '--no-warnings',
     '--print',
     '%(.{title,duration,section_start,section_end,thumbnail})j',
+    '--print',
+    '%(formats.:.{format_id,width,height,rows,columns,fps,fragments})j',
     '--',
     url,
   ];
@@ -193,7 +214,8 @@ function runVideoMetadata(url: string, timeoutMs: number): Promise<VideoMetadata
     timeout.unref();
 
     child.stdout.on('data', (chunk: Buffer) => {
-      stdout = (stdout + chunk.toString()).slice(-100_000);
+      stdout += chunk.toString();
+      if (stdout.length > MAX_METADATA_OUTPUT) stdout = stdout.slice(0, MAX_METADATA_OUTPUT);
     });
 
     child.stderr.on('data', (chunk: Buffer) => {

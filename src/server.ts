@@ -1,7 +1,8 @@
 import { serve } from '@hono/node-server';
 import { spawnSync } from 'node:child_process';
 import { app } from './app';
-import { reapStaleJobs, sweepLeftoverDirs } from './jobs';
+import { probeFfmpegNetwork } from './ffmpeg';
+import { reapStaleJobs, setSectionDownloads, sweepLeftoverDirs } from './jobs';
 import { reapStalePreviews } from './previews';
 
 function checkBinary(name: string, versionArgs: string[]): void {
@@ -17,6 +18,17 @@ function checkBinary(name: string, versionArgs: string[]): void {
 
 checkBinary('yt-dlp', ['--version']);
 checkBinary('ffmpeg', ['-version']);
+
+void probeFfmpegNetwork().then((works) => {
+  setSectionDownloads(works);
+  if (!works) {
+    console.warn(
+      'ffmpeg on PATH crashes when opening network URLs (common with fully static builds), ' +
+        'so clips will download the whole video before trimming. ' +
+        "Install a distro ffmpeg (e.g. 'sudo apt install ffmpeg') for faster clips.",
+    );
+  }
+});
 
 const hostname = process.env.DOMINATOR_HOST ?? '127.0.0.1';
 if (hostname !== '127.0.0.1' && hostname !== '0.0.0.0') {
