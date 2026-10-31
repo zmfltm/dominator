@@ -81,6 +81,21 @@ describe('clip args', () => {
     expect(args.at(-1)).toBe(url);
   });
 
+  it('prefers HLS for Twitter/X MP4 downloads and fetches fragments in parallel', () => {
+    const url = 'https://x.com/user/status/1349794411333394432';
+    const args = buildYtDlpArgs({ url, format: 'mp4' }, '/tmp/dominator-test');
+    const format = args[args.indexOf('-f') + 1];
+
+    expect(format.startsWith('bv*[ext=mp4][protocol^=m3u8]+ba[protocol^=m3u8]/')).toBe(true);
+    expect(args[args.indexOf('--concurrent-fragments') + 1]).toBe('4');
+    expect(args.slice(-2)).toEqual(['--', url]);
+  });
+
+  it('keeps the default MP4 format for non-Twitter hosts', () => {
+    const args = buildYtDlpArgs({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' }, '/tmp/dominator-test');
+    expect(args[args.indexOf('-f') + 1]).toBe('bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b');
+  });
+
   it('converts signed Discord attachments to MP3 and preserves the signature', () => {
     const url = 'https://cdn.discordapp.com/attachments/123/456/voice-message.ogg?ex=abc&is=def&hm=signature';
     const args = buildYtDlpArgs({ url, format: 'mp3' }, '/tmp/dominator-test');

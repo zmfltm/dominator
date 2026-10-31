@@ -7,7 +7,7 @@ import { join, parse } from 'node:path';
 import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
-import { isSoundCloudUrl, type JobRequest } from './validate';
+import { isSoundCloudUrl, isTwitterUrl, type JobRequest } from './validate';
 import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const TEMP_PREFIX = 'dominator-';
@@ -47,6 +47,21 @@ const FORMAT_ARGS: Record<JobRequest['format'], string[]> = {
   mp3: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
   audio: ['-f', 'bestaudio/best'],
 };
+
+// Twitter/X throttles its progressive http MP4s to roughly 50 KB/s, while the
+// HLS renditions of the same video download at full speed. Prefer HLS there.
+const TWITTER_MP4_FORMAT_ARGS = [
+  '-f',
+  'bv*[ext=mp4][protocol^=m3u8]+ba[protocol^=m3u8]/b[ext=mp4][protocol^=m3u8]/bv*[ext=mp4]+ba/b[ext=mp4]/b',
+];
+
+// Fetch HLS and DASH fragments in parallel instead of one at a time.
+const CONCURRENT_FRAGMENT_ARGS = ['--concurrent-fragments', '4'];
+
+function formatArgs(request: JobRequest): string[] {
+  if (request.format === 'mp4' && isTwitterUrl(request.url)) return TWITTER_MP4_FORMAT_ARGS;
+  return FORMAT_ARGS[request.format];
+}
 
 type Clip = NonNullable<JobRequest['clip']>;
 
@@ -105,7 +120,8 @@ export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
   return [
     '--ignore-config',
     ...youtubeJsRuntimeArgs(request.url),
-    ...FORMAT_ARGS[request.format],
+    ...formatArgs(request),
+    ...CONCURRENT_FRAGMENT_ARGS,
     ...(isSoundCloudUrl(request.url) ? ['--embed-thumbnail'] : []),
     '--no-playlist',
     '--progress',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseJobRequest } from './validate';
+import { isTwitterUrl, parseJobRequest } from './validate';
 
 describe('parseJobRequest', () => {
   it('accepts a standard watch URL with mp4', () => {
@@ -260,5 +260,18 @@ describe('parseJobRequest', () => {
     expect(parseJobRequest(null).ok).toBe(false);
     expect(parseJobRequest('hi').ok).toBe(false);
     expect(parseJobRequest(undefined).ok).toBe(false);
+  });
+});
+
+describe('isTwitterUrl', () => {
+  it('matches Twitter and X hosts', () => {
+    expect(isTwitterUrl('https://x.com/user/status/1')).toBe(true);
+    expect(isTwitterUrl('https://mobile.twitter.com/user/status/1')).toBe(true);
+  });
+
+  it('rejects other hosts and lookalikes', () => {
+    expect(isTwitterUrl('https://youtu.be/dQw4w9WgXcQ')).toBe(false);
+    expect(isTwitterUrl('https://x.com.evil.example/user/status/1')).toBe(false);
+    expect(isTwitterUrl('not a url')).toBe(false);
   });
 });
