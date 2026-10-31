@@ -55,8 +55,9 @@ const TWITTER_MP4_FORMAT_ARGS = [
   'bv*[ext=mp4][protocol^=m3u8]+ba[protocol^=m3u8]/b[ext=mp4][protocol^=m3u8]/bv*[ext=mp4]+ba/b[ext=mp4]/b',
 ];
 
-// Fetch HLS and DASH fragments in parallel instead of one at a time.
-const CONCURRENT_FRAGMENT_ARGS = ['--concurrent-fragments', '4'];
+// Fetch Twitter/X HLS fragments in parallel. Not used for other hosts:
+// YouTube answers parallel HLS fragment requests with 401.
+const TWITTER_CONCURRENT_FRAGMENT_ARGS = ['--concurrent-fragments', '4'];
 
 function formatArgs(request: JobRequest): string[] {
   if (request.format === 'mp4' && isTwitterUrl(request.url)) return TWITTER_MP4_FORMAT_ARGS;
@@ -121,7 +122,7 @@ export function buildYtDlpArgs(request: JobRequest, dir: string): string[] {
     '--ignore-config',
     ...youtubeJsRuntimeArgs(request.url),
     ...formatArgs(request),
-    ...CONCURRENT_FRAGMENT_ARGS,
+    ...(isTwitterUrl(request.url) ? TWITTER_CONCURRENT_FRAGMENT_ARGS : []),
     ...(isSoundCloudUrl(request.url) ? ['--embed-thumbnail'] : []),
     '--no-playlist',
     '--progress',

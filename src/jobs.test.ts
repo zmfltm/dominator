@@ -94,6 +94,7 @@ describe('clip args', () => {
   it('keeps the default MP4 format for non-Twitter hosts', () => {
     const args = buildYtDlpArgs({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' }, '/tmp/dominator-test');
     expect(args[args.indexOf('-f') + 1]).toBe('bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b');
+    expect(args).not.toContain('--concurrent-fragments');
   });
 
   it('converts signed Discord attachments to MP3 and preserves the signature', () => {
