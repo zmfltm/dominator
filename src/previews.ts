@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { youtubeJsRuntimeArgs } from './ytdlp';
+import { isTwitterUrl } from './validate';
 
 export const PREVIEW_TEMP_PREFIX = 'dominator-preview-';
 export const PREVIEW_TTL_MS = 60 * 60 * 1000;
@@ -70,12 +71,21 @@ export function previewStatusBody(preview: Preview): Record<string, unknown> {
   };
 }
 
+const PREVIEW_FORMAT = 'worst[height<=360][ext=mp4]/worst[height<=360]/worstvideo*[height<=360][ext=mp4]+worstaudio[ext=m4a]/worstvideo*[height<=360]+worstaudio/worst';
+
+// Twitter/X throttles progressive http MP4s, so try its HLS renditions first.
+const TWITTER_PREVIEW_FORMAT = `worstvideo*[height<=360][protocol^=m3u8]+worstaudio[protocol^=m3u8]/worst[height<=360][protocol^=m3u8]/${PREVIEW_FORMAT}`;
+
+function previewFormat(url: string): string {
+  return isTwitterUrl(url) ? TWITTER_PREVIEW_FORMAT : PREVIEW_FORMAT;
+}
+
 export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
   return [
     '--ignore-config',
     ...youtubeJsRuntimeArgs(url),
     '-f',
-    'worst[height<=360][ext=mp4]/worst[height<=360]/worstvideo*[height<=360][ext=mp4]+worstaudio[ext=m4a]/worstvideo*[height<=360]+worstaudio/worst',
+    previewFormat(url),
     '--merge-output-format',
     'mp4',
     '--no-playlist',
