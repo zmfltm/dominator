@@ -59,9 +59,14 @@ const TWITTER_MP4_FORMAT_ARGS = [
 // YouTube answers parallel HLS fragment requests with 401.
 const TWITTER_CONCURRENT_FRAGMENT_ARGS = ['--concurrent-fragments', '4'];
 
+// Prefer H.264 video and AAC audio so saved MP4s upload directly to sites like
+// Twitter/X, which reject AV1 and VP9. Without this, YouTube picks AV1 at 4K.
+const H264_SORT_ARGS = ['-S', 'vcodec:h264,acodec:aac'];
+
 function formatArgs(request: JobRequest): string[] {
-  if (request.format === 'mp4' && isTwitterUrl(request.url)) return TWITTER_MP4_FORMAT_ARGS;
-  return FORMAT_ARGS[request.format];
+  if (request.format !== 'mp4') return FORMAT_ARGS[request.format];
+  const selector = isTwitterUrl(request.url) ? TWITTER_MP4_FORMAT_ARGS : FORMAT_ARGS.mp4;
+  return [...selector, ...H264_SORT_ARGS];
 }
 
 type Clip = NonNullable<JobRequest['clip']>;
@@ -188,6 +193,8 @@ function ffmpegReencodeOutputArgs(format: JobRequest['format']): string[] {
     '-dn',
     '-c:v',
     'libx264',
+    '-pix_fmt',
+    'yuv420p',
     '-preset',
     'veryfast',
     '-crf',
