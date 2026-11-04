@@ -81,6 +81,41 @@ describe('clip args', () => {
     expect(args.at(-1)).toBe(url);
   });
 
+  it('prefers HLS for Twitter/X MP4 downloads and fetches fragments in parallel', () => {
+    const url = 'https://x.com/user/status/1349794411333394432';
+    const args = buildYtDlpArgs({ url, format: 'mp4' }, '/tmp/dominator-test');
+    const format = args[args.indexOf('-f') + 1];
+
+    expect(format.startsWith('bv*[ext=mp4][protocol^=m3u8]+ba[protocol^=m3u8]/')).toBe(true);
+    expect(args[args.indexOf('--concurrent-fragments') + 1]).toBe('4');
+    expect(args.slice(-2)).toEqual(['--', url]);
+  });
+
+  it('keeps the default MP4 format for non-Twitter hosts', () => {
+    const args = buildYtDlpArgs({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' }, '/tmp/dominator-test');
+    expect(args[args.indexOf('-f') + 1]).toBe('bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b');
+    expect(args).not.toContain('--concurrent-fragments');
+  });
+
+  it('re-extracts throttled YouTube downloads only', () => {
+    const youtube = buildYtDlpArgs({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' }, '/tmp/dominator-test');
+    expect(youtube[youtube.indexOf('--throttled-rate') + 1]).toBe('100K');
+    const twitter = buildYtDlpArgs(
+      { url: 'https://x.com/user/status/1349794411333394432', format: 'mp4' },
+      '/tmp/dominator-test',
+    );
+    expect(twitter).not.toContain('--throttled-rate');
+  });
+
+  it('prefers H.264 and AAC for MP4 so files upload to Twitter/X', () => {
+    for (const url of ['https://youtu.be/dQw4w9WgXcQ', 'https://x.com/user/status/1349794411333394432']) {
+      const args = buildYtDlpArgs({ url, format: 'mp4' }, '/tmp/dominator-test');
+      expect(args[args.indexOf('-S') + 1]).toBe('vcodec:h264,acodec:aac');
+    }
+    const audio = buildYtDlpArgs({ url: 'https://soundcloud.com/artist/track', format: 'audio' }, '/tmp/dominator-test');
+    expect(audio).not.toContain('-S');
+  });
+
   it('converts signed Discord attachments to MP3 and preserves the signature', () => {
     const url = 'https://cdn.discordapp.com/attachments/123/456/voice-message.ogg?ex=abc&is=def&hm=signature';
     const args = buildYtDlpArgs({ url, format: 'mp3' }, '/tmp/dominator-test');
