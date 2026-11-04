@@ -97,6 +97,16 @@ describe('clip args', () => {
     expect(args).not.toContain('--concurrent-fragments');
   });
 
+  it('re-extracts throttled YouTube downloads only', () => {
+    const youtube = buildYtDlpArgs({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' }, '/tmp/dominator-test');
+    expect(youtube[youtube.indexOf('--throttled-rate') + 1]).toBe('100K');
+    const twitter = buildYtDlpArgs(
+      { url: 'https://x.com/user/status/1349794411333394432', format: 'mp4' },
+      '/tmp/dominator-test',
+    );
+    expect(twitter).not.toContain('--throttled-rate');
+  });
+
   it('prefers H.264 and AAC for MP4 so files upload to Twitter/X', () => {
     for (const url of ['https://youtu.be/dQw4w9WgXcQ', 'https://x.com/user/status/1349794411333394432']) {
       const args = buildYtDlpArgs({ url, format: 'mp4' }, '/tmp/dominator-test');
