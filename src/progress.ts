@@ -1,6 +1,7 @@
 export type ProgressEvent =
   | { stage: 'downloading'; percent: number; downloadedBytes?: number; totalBytes?: number }
-  | { stage: 'processing' };
+  | { stage: 'processing' }
+  | { stage: 'compressing'; percent: number | null };
 
 const DOWNLOAD_RE = /^\[download\]\s+(\d+(?:\.\d+)?)%(?:\s+of\s+~?\s*([\d.]+)\s*([KMGT]?i?B))?/i;
 const PROCESSING_RE = /^\[(Merger|ExtractAudio|VideoConvertor|Fixup\w+)\]/; // VideoConvertor matches yt-dlp's actual upstream spelling and must not be "corrected" to VideoConverter

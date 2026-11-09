@@ -17,6 +17,7 @@ function checkBinary(name: string, versionArgs: string[]): void {
 
 checkBinary('yt-dlp', ['--version']);
 checkBinary('ffmpeg', ['-version']);
+checkBinary('ffprobe', ['-version']);
 
 const hostname = process.env.DOMINATOR_HOST ?? '127.0.0.1';
 if (hostname !== '127.0.0.1' && hostname !== '0.0.0.0') {

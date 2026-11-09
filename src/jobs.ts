@@ -1,10 +1,20 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { createWriteStream } from 'node:fs';
 import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, parse } from 'node:path';
-import type { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import {
+  buildFfmpegCompressArgs,
+  compressedFileName,
+  MAX_UPLOAD_BYTES,
+  parseFfmpegProgressLine,
+  probeMedia,
+  uploadFileName,
+} from './compress';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
 import { isSoundCloudUrl, type JobRequest } from './validate';
@@ -24,6 +34,19 @@ export class JobLimitError extends Error {
   constructor(limit = MAX_RUNNING_JOBS) {
     super(`too many active jobs; limit is ${limit}`);
     this.name = 'JobLimitError';
+  }
+}
+
+export type UploadFailure = 'too_large' | 'empty' | 'aborted';
+
+export class UploadError extends Error {
+  constructor(readonly reason: UploadFailure) {
+    super({
+      too_large: 'file is too large',
+      empty: 'file is empty',
+      aborted: 'upload did not finish',
+    }[reason]);
+    this.name = 'UploadError';
   }
 }
 
@@ -345,7 +368,7 @@ async function trimDownloadedFile(
   clip: Clip,
   format: JobRequest['format'],
 ): Promise<string> {
-  emitProcessing(job);
+  emitProgress(job, { stage: 'processing' });
   const outputPath = clipOutputPath(inputPath, format);
 
   const copyError = await runFfmpeg(
@@ -373,13 +396,16 @@ async function trimDownloadedFile(
   return outputPath;
 }
 
-function emitProcessing(job: Job): void {
-  const progress: ProgressEvent = { stage: 'processing' };
+function emitProgress(job: Job, progress: ProgressEvent): void {
   job.lastProgress = progress;
   job.events.emit('progress', progress);
 }
 
-function runFfmpeg(job: Job, args: string[]): Promise<string | null> {
+function runFfmpeg(
+  job: Job,
+  args: string[],
+  onStdoutLine?: (line: string) => void,
+): Promise<string | null> {
   return new Promise((resolve) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
     try {
@@ -405,6 +431,15 @@ function runFfmpeg(job: Job, args: string[]): Promise<string | null> {
       stderr = (stderr + chunk.toString()).slice(-4000);
     });
 
+    let pending = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (!onStdoutLine) return;
+      pending += chunk.toString();
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines) onStdoutLine(line);
+    });
+
     child.on('error', (err) => {
       settle(`failed to start ffmpeg: ${err.message}`);
     });
@@ -421,6 +456,107 @@ function runFfmpeg(job: Job, args: string[]): Promise<string | null> {
       settle(extractFfmpegError(stderr) ?? ffmpegExitMessage(code, signal));
     });
   });
+}
+
+export async function startCompressJob(
+  body: ReadableStream<Uint8Array>,
+  originalName: string,
+  maxBytes = MAX_UPLOAD_BYTES,
+): Promise<Job> {
+  if (isAtJobLimit(activeJobCount())) {
+    throw new JobLimitError();
+  }
+
+  startingJobs += 1;
+  let dir: string;
+  try {
+    dir = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
+  } catch (err) {
+    startingJobs -= 1;
+    throw err;
+  }
+  const job: Job = {
+    id: randomUUID(),
+    dir,
+    status: 'running',
+    events: new EventEmitter(),
+    lastProgress: null,
+  };
+  jobs.set(job.id, job);
+  startingJobs -= 1;
+
+  const inputPath = join(dir, uploadFileName(originalName));
+  try {
+    await saveUpload(body, inputPath, maxBytes);
+  } catch (err) {
+    jobs.delete(job.id);
+    await rm(dir, { recursive: true, force: true });
+    throw err instanceof UploadError ? err : new UploadError('aborted');
+  }
+
+  void runCompress(job, inputPath, originalName);
+  return job;
+}
+
+async function saveUpload(
+  body: ReadableStream<Uint8Array>,
+  inputPath: string,
+  maxBytes: number,
+): Promise<void> {
+  let received = 0;
+  const counter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      received += chunk.length;
+      if (received > maxBytes) {
+        callback(new UploadError('too_large'));
+        return;
+      }
+      callback(null, chunk);
+    },
+  });
+  await pipeline(
+    Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>),
+    counter,
+    createWriteStream(inputPath),
+  );
+  if (received === 0) throw new UploadError('empty');
+}
+
+async function runCompress(job: Job, inputPath: string, originalName: string): Promise<void> {
+  try {
+    const info = await probeMedia(inputPath, (child) => {
+      job.child = child;
+    });
+    if (job.status !== 'running') return;
+
+    emitProgress(job, { stage: 'compressing', percent: null });
+    const outputPath = join(job.dir, compressedFileName(originalName, info.kind));
+    const ffmpegError = await runFfmpeg(
+      job,
+      buildFfmpegCompressArgs(inputPath, outputPath, info.kind),
+      (line) => {
+        const percent = parseFfmpegProgressLine(line, info.durationSeconds);
+        if (percent !== null && job.status === 'running') {
+          emitProgress(job, { stage: 'compressing', percent });
+        }
+      },
+    );
+    if (job.status !== 'running') return;
+    if (ffmpegError) throw new Error(ffmpegError);
+
+    const [input, output] = await Promise.all([stat(inputPath), stat(outputPath)]);
+    if (output.size >= input.size) throw new Error('compressed file was not smaller');
+    await rm(inputPath, { force: true });
+    if (job.status !== 'running') return;
+
+    job.filePath = outputPath;
+    job.status = 'done';
+    job.completedAt = Date.now();
+    job.events.emit('done');
+  } catch (err) {
+    if (job.status !== 'running') return;
+    failJob(job, err instanceof Error ? err.message : String(err));
+  }
 }
 
 export async function deleteJob(id: string): Promise<void> {
@@ -482,10 +618,10 @@ function extractFfmpegError(stderr: string): string | undefined {
 
 function ffmpegExitMessage(code: number | null, signal: NodeJS.Signals | null): string {
   if (typeof code === 'number' && code < 0) {
-    return `ffmpeg crashed while clipping (signal ${Math.abs(code)})`;
+    return `ffmpeg crashed (signal ${Math.abs(code)})`;
   }
   if (signal) {
-    return `ffmpeg crashed while clipping (${signal})`;
+    return `ffmpeg crashed (${signal})`;
   }
   return `ffmpeg exited with code ${code}`;
 }
