@@ -872,7 +872,7 @@
   }
 
   function restartableCount() {
-    return items.filter(isRetryable).length;
+    return items.filter((item) => item.status === 'canceled').length;
   }
 
   function toggleButton(button, show) {
@@ -2368,7 +2368,7 @@
 
   function reactivateCanceledItems() {
     for (const item of items) {
-      if (isRetryable(item)) resetForQueue(item);
+      if (item.status === 'canceled') resetForQueue(item);
     }
   }
 
