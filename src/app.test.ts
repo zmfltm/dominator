@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { app } from './app';
+import { MAX_UPLOAD_BYTES } from './compress';
 
 function postJob(body: string): Response | Promise<Response> {
   return app.request('/api/jobs', {
@@ -200,5 +201,90 @@ describe('Discord message links', () => {
     });
     expect(response.status).toBe(400);
     expect((await response.json()).error).toContain('copy the audio attachment link');
+  });
+});
+
+describe('POST /api/compress', () => {
+  const octet = { 'content-type': 'application/octet-stream' };
+
+  it('rejects cross-origin uploads', async () => {
+    const res = await app.request('/api/compress?name=a.mp4', {
+      method: 'POST',
+      headers: { ...octet, origin: 'https://attacker.example', host: '127.0.0.1:3000' },
+      body: 'x',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects cross-site fetches', async () => {
+    const res = await app.request('/api/compress?name=a.mp4', {
+      method: 'POST',
+      headers: { ...octet, 'sec-fetch-site': 'cross-site' },
+      body: 'x',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('requires application/octet-stream', async () => {
+    const res = await app.request('/api/compress?name=a.mp4', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(415);
+  });
+
+  it('requires a file name', async () => {
+    const res = await app.request('/api/compress', {
+      method: 'POST',
+      headers: octet,
+      body: 'x',
+    });
+    expect(res.status).toBe(400);
+    const blank = await app.request('/api/compress?name=%20', {
+      method: 'POST',
+      headers: octet,
+      body: 'x',
+    });
+    expect(blank.status).toBe(400);
+  });
+
+  it('rejects a Content-Length over the upload cap before reading', async () => {
+    const res = await app.request('/api/compress?name=a.mp4', {
+      method: 'POST',
+      headers: { ...octet, 'content-length': String(MAX_UPLOAD_BYTES + 1) },
+      body: 'x',
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it('rejects an empty body', async () => {
+    const res = await app.request('/api/compress?name=a.mp4', {
+      method: 'POST',
+      headers: octet,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('cancels the job when the client disconnects before the response', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const res = await app.request(new Request('http://localhost/api/compress?name=a.mp4', {
+      method: 'POST',
+      headers: octet,
+      body: 'not media',
+      signal: controller.signal,
+    }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('upload did not finish');
+  });
+
+  it('still limits the size of JSON bodies on other routes', async () => {
+    const res = await app.request('/api/jobs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'x'.repeat(20 * 1024), format: 'mp3' }),
+    });
+    expect(res.status).toBe(413);
   });
 });

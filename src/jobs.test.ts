@@ -9,6 +9,7 @@ import {
   isOwnedTempDirName,
   isStale,
   MAX_RUNNING_JOBS,
+  startCompressJob,
 } from './jobs';
 
 describe('isStale', () => {
@@ -167,5 +168,21 @@ describe('clip args', () => {
     expect(clipOutputPath('/tmp/dominator-test/source.webm', 'mp3')).toBe(
       '/tmp/dominator-test/source.clip.mp3',
     );
+  });
+});
+
+describe('startCompressJob upload limits', () => {
+  const stream = (bytes: number) => new Response(new Uint8Array(bytes)).body!;
+
+  it('rejects uploads over the byte cap', async () => {
+    await expect(startCompressJob(stream(100), 'a.mp4', 50)).rejects.toMatchObject({
+      reason: 'too_large',
+    });
+  });
+
+  it('rejects empty uploads', async () => {
+    await expect(startCompressJob(stream(0), 'a.mp4')).rejects.toMatchObject({
+      reason: 'empty',
+    });
   });
 });

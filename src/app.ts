@@ -6,7 +6,18 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { Readable } from 'node:stream';
-import { cancelJob, deleteJob, getJob, JobLimitError, startJob, type Job } from './jobs';
+import { MAX_UPLOAD_BYTES } from './compress';
+import {
+  cancelJob,
+  deleteJob,
+  getJob,
+  JobLimitError,
+  startCompressJob,
+  startJob,
+  UploadError,
+  type Job,
+  type UploadFailure,
+} from './jobs';
 import { fetchVideoMetadata, MetadataError } from './metadata';
 import {
   getPreview,
@@ -38,7 +49,9 @@ app.use('/api/*', async (c, next) => {
     return c.json({ error: 'cross-origin requests are not allowed' }, 403);
   }
 
-  const contentType = c.req.header('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (c.req.path === '/api/compress') return next();
+
+  const contentType = requestContentType(c.req.header('content-type'));
   if (contentType !== 'application/json' && !contentType?.endsWith('+json')) {
     return c.json({ error: 'content-type must be application/json' }, 415);
   }
@@ -48,6 +61,10 @@ app.use('/api/*', async (c, next) => {
     onError: (context) => context.json({ error: 'request body is too large' }, 413),
   })(c, next);
 });
+
+function requestContentType(header: string | undefined): string | undefined {
+  return header?.split(';', 1)[0].trim().toLowerCase();
+}
 
 function hasSameHost(origin: string, host: string): boolean {
   try {
@@ -278,6 +295,48 @@ app.post('/api/jobs', async (c) => {
   } catch (err) {
     if (err instanceof JobLimitError) {
       return c.json({ error: err.message }, 429);
+    }
+    throw err;
+  }
+});
+
+const UPLOAD_STATUS: Record<UploadFailure, 400 | 413> = {
+  too_large: 413,
+  empty: 400,
+  aborted: 400,
+};
+
+app.post('/api/compress', async (c) => {
+  if (requestContentType(c.req.header('content-type')) !== 'application/octet-stream') {
+    return c.json({ error: 'content-type must be application/octet-stream' }, 415);
+  }
+  const name = c.req.query('name')?.trim();
+  if (!name) {
+    return c.json({ error: 'file name is required' }, 400);
+  }
+  if (Number(c.req.header('content-length')) > MAX_UPLOAD_BYTES) {
+    return c.json({ error: new UploadError('too_large').message }, 413);
+  }
+  const body = c.req.raw.body;
+  if (!body) {
+    return c.json({ error: new UploadError('empty').message }, 400);
+  }
+  try {
+    const job = await startCompressJob(body, name);
+    const { signal } = c.req.raw;
+    if (signal.aborted) {
+      cancelJob(job.id);
+      return c.json({ error: new UploadError('aborted').message }, 400);
+    }
+    // The client cannot cancel a job whose id it never received.
+    signal.addEventListener('abort', () => cancelJob(job.id), { once: true });
+    return c.json({ jobId: job.id }, 201);
+  } catch (err) {
+    if (err instanceof JobLimitError) {
+      return c.json({ error: err.message }, 429);
+    }
+    if (err instanceof UploadError) {
+      return c.json({ error: err.message }, UPLOAD_STATUS[err.reason]);
     }
     throw err;
   }
