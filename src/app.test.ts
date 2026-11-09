@@ -266,6 +266,19 @@ describe('POST /api/compress', () => {
     expect(res.status).toBe(400);
   });
 
+  it('cancels the job when the client disconnects before the response', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const res = await app.request(new Request('http://localhost/api/compress?name=a.mp4', {
+      method: 'POST',
+      headers: octet,
+      body: 'not media',
+      signal: controller.signal,
+    }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('upload did not finish');
+  });
+
   it('still limits the size of JSON bodies on other routes', async () => {
     const res = await app.request('/api/jobs', {
       method: 'POST',

@@ -323,6 +323,13 @@ app.post('/api/compress', async (c) => {
   }
   try {
     const job = await startCompressJob(body, name);
+    const { signal } = c.req.raw;
+    if (signal.aborted) {
+      cancelJob(job.id);
+      return c.json({ error: new UploadError('aborted').message }, 400);
+    }
+    // The client cannot cancel a job whose id it never received.
+    signal.addEventListener('abort', () => cancelJob(job.id), { once: true });
     return c.json({ jobId: job.id }, 201);
   } catch (err) {
     if (err instanceof JobLimitError) {
