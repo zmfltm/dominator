@@ -18,6 +18,7 @@ function checkBinary(name: string, versionArgs: string[]): void {
 
 checkBinary('yt-dlp', ['--version']);
 checkBinary('ffmpeg', ['-version']);
+checkBinary('ffprobe', ['-version']);
 
 void probeFfmpegNetwork().then((works) => {
   setSectionDownloads(works);

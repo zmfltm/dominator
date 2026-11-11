@@ -111,6 +111,7 @@
     white-space: nowrap;
   }
   #add,
+  #compress,
   #clipInput { color: var(--fg); }
   #clipInput.active { color: var(--accent); }
   #download {
@@ -548,8 +549,10 @@
       <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
       <button id="add" type="button" hidden disabled aria-label="add to queue" data-icon="add"></button>
       <button id="clipInput" type="button" hidden disabled aria-label="edit clip" data-icon="clip"></button>
+      <button id="compress" type="button" title="compress file" aria-label="compress file" data-icon="compress"></button>
       <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
     </form>
+    <input id="compressFile" type="file" accept="video/*,audio/*" multiple hidden tabindex="-1" aria-hidden="true">
     <div id="inputClipPanel" class="clip-panel input-clip-panel" hidden>
       <label class="clip-field">
         <span>start</span>
@@ -595,6 +598,8 @@
   const inputClipPreviewPanel = document.getElementById('inputClipPreviewPanel');
   const clearTextButton = document.getElementById('clearText');
   const downloadButton = document.getElementById('download');
+  const compressButton = document.getElementById('compress');
+  const compressFileInput = document.getElementById('compressFile');
   const cancelButton = document.getElementById('cancel');
   const clearButton = document.getElementById('clear');
   const jobsList = document.getElementById('jobs');
@@ -605,6 +610,7 @@
     add: 'M10 4v12 M4 10h12',
     minus: 'M4 10h12',
     download: 'M10 3v9 M6 8l4 4 4-4 M4 13v4h12v-4',
+    compress: 'M3 3l5 5 M4 8h4V4 M17 17l-5-5 M16 12h-4v4',
     clip: 'M3 3h4v4H3z M3 13h4v4H3z M7 7l10 10 M7 13 17 3',
     reset: 'M4 8V4 M4 8h4 M4 8l4-4h5l4 4v5l-4 4H7l-3-3',
     play: 'M6 3l10 7-10 7z',
@@ -676,11 +682,11 @@
   }
 
   function isActive(item) {
-    return item.status === 'starting' || item.status === 'downloading' || item.status === 'processing';
+    return ['starting', 'uploading', 'downloading', 'compressing', 'processing'].includes(item.status);
   }
 
   function canEditClip(item) {
-    return item.format !== 'audio' && sourceForUrl(item.url) !== 'discord' && (
+    return item.kind === 'download' && item.format !== 'audio' && sourceForUrl(item.url) !== 'discord' && (
       item.status === 'queued' || item.status === 'canceled' || item.status === 'invalid'
     );
   }
@@ -933,6 +939,10 @@
     return items.filter((item) => item.status === 'queued').length;
   }
 
+  function isRetryable(item) {
+    return item.status === 'canceled' || (item.kind === 'compress' && item.status === 'failed');
+  }
+
   function restartableCount() {
     return items.filter((item) => item.status === 'canceled').length;
   }
@@ -968,7 +978,7 @@
   function progressScale(item) {
     if (item.status === 'saving' || item.status === 'processing') return 1;
     if (item.status === 'starting') return 0.05;
-    if (item.status === 'downloading') return clamp((item.percent ?? 0) / 100, 0, 1);
+    if (['uploading', 'downloading', 'compressing'].includes(item.status)) return clamp((item.percent ?? 0) / 100, 0, 1);
     return 0;
   }
 
@@ -980,6 +990,7 @@
     if (source === 'reddit') return 'Reddit';
     if (source === 'soundcloud') return 'SoundCloud';
     if (source === 'discord') return 'Discord';
+    if (source === 'file') return 'file';
     return 'site';
   }
 
@@ -1088,6 +1099,9 @@
           : 'downloading clip ';
       return label + item.percent.toFixed(1) + '%' + size;
     }
+    if (['uploading', 'compressing'].includes(item.status) && typeof item.percent === 'number') {
+      return item.status + ' ' + Math.floor(item.percent) + '%';
+    }
     if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
     if (!clip) return item.status;
     if (item.status === 'starting') return 'starting clip';
@@ -1133,11 +1147,16 @@
     return 'download this';
   }
 
+  function downloadOneLabel(item) {
+    if (item.kind === 'compress') return 'compress this file';
+    return item.format !== 'mp4' ? 'download this track' : 'download this video';
+  }
+
   function canStartSingleDownload(item, active) {
     return (
       !groupRunning &&
       active < MAX_ACTIVE_JOBS &&
-      (item.status === 'queued' || item.status === 'canceled')
+      (item.status === 'queued' || isRetryable(item))
     );
   }
 
@@ -2129,7 +2148,7 @@
       const title = document.createElement('div');
       title.className = 'job-title';
 
-      const source = sourceForUrl(item.url);
+      const source = item.kind === 'compress' ? 'file' : sourceForUrl(item.url);
       const icon = document.createElement('span');
       icon.className = 'site-icon';
       icon.setAttribute('role', 'img');
@@ -2173,7 +2192,7 @@
       setButtonIcon(downloadOne, 'download');
       downloadOne.title = singleDownloadTitle(active);
       downloadOne.disabled = !canStartSingleDownload(item, active);
-      downloadOne.setAttribute('aria-label', item.format !== 'mp4' ? 'download this track' : 'download this video');
+      downloadOne.setAttribute('aria-label', downloadOneLabel(item));
       downloadOne.addEventListener('click', () => startSingleItem(item));
 
       const remove = document.createElement('button');
@@ -2238,6 +2257,9 @@
       : clipEnd || (linkedClip?.end !== null && linkedClip?.end !== undefined ? formatClipTime(linkedClip.end) : '');
     const item = {
       localId: nextLocalId,
+      kind: 'download',
+      file: null,
+      upload: null,
       url,
       title: initialTitle,
       titleLoading: !initialTitle && selectedFormat !== 'audio',
@@ -2273,6 +2295,13 @@
     items.push(item);
     if (!initialTitle && selectedFormat !== 'audio') item.metadataPromise = loadTitle(item);
     if (renderNow) render();
+    return item;
+  }
+
+  function queueFile(file) {
+    const item = queueItem(file.name, 'mp4', file.name, '', '', null, false);
+    item.kind = 'compress';
+    item.file = file;
     return item;
   }
 
@@ -2611,6 +2640,11 @@
     item.error = null;
     render();
 
+    if (item.kind === 'compress') {
+      await startCompress(item);
+      return;
+    }
+
     if (item.titleLoading && hasClipText(item) && item.metadataPromise) {
       await item.metadataPromise;
       if (!isCurrent() || item.status !== 'starting') return;
@@ -2669,6 +2703,63 @@
     item.jobId = data.jobId;
     item.clipMode = data.clipMode === 'section' || data.clipMode === 'full' ? data.clipMode : null;
 
+    followJob(item);
+  }
+
+  function uploadFile(item) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      item.upload = request;
+      request.open('POST', '/api/compress?name=' + encodeURIComponent(item.file.name));
+      request.setRequestHeader('content-type', 'application/octet-stream');
+      request.upload.onprogress = (event) => {
+        if (!event.lengthComputable || item.status !== 'uploading') return;
+        const percent = (event.loaded / event.total) * 100;
+        const changed = Math.floor(percent) !== Math.floor(item.percent ?? -1);
+        item.percent = percent;
+        if (changed) render();
+      };
+      request.onload = () => {
+        let data = {};
+        try {
+          data = JSON.parse(request.responseText);
+        } catch {}
+        if (request.status === 201 && data.jobId) resolve(data);
+        else reject(new Error(data.error || 'could not upload file'));
+      };
+      request.onerror = () => reject(new Error('could not reach server'));
+      request.onabort = () => reject(new Error('upload canceled'));
+      request.send(item.file);
+    });
+  }
+
+  async function startCompress(item) {
+    item.status = 'uploading';
+    item.percent = 0;
+    render();
+
+    let data;
+    try {
+      data = await uploadFile(item);
+    } catch (error) {
+      item.upload = null;
+      if (item.status === 'canceled') return;
+      finishItem(item, 'failed', error.message);
+      return;
+    }
+    item.upload = null;
+    item.jobId = data.jobId;
+    if (item.status === 'canceled') {
+      await cancelServerJob(item);
+      render();
+      if (groupRunning) runQueue();
+      return;
+    }
+    item.percent = null;
+    followJob(item);
+  }
+
+  function followJob(item) {
     const source = new EventSource('/api/jobs/' + item.jobId + '/events');
     item.source = source;
     const isLive = () => item.source === source && isCurrent();
@@ -2686,6 +2777,9 @@
         item.percent = progress.percent;
         item.downloadedBytes = progress.downloadedBytes;
         item.totalBytes = progress.totalBytes;
+      } else if (progress.stage === 'compressing') {
+        item.status = 'compressing';
+        item.percent = progress.percent;
       } else {
         item.status = 'processing';
       }
@@ -2727,6 +2821,7 @@
     item.source = null;
     item.activeClip = null;
     item.clipMode = null;
+    item.upload = null;
   }
 
   function reactivateCanceledItems() {
@@ -2737,7 +2832,7 @@
 
   function startSingleItem(item) {
     if (groupRunning || activeCount() >= MAX_ACTIVE_JOBS) return;
-    if (item.status === 'canceled') resetForQueue(item);
+    if (isRetryable(item)) resetForQueue(item);
     if (item.status !== 'queued') return;
     groupRunning = false;
     void startItem(item);
@@ -2766,6 +2861,11 @@
     return cancelServerJobId(item.jobId);
   }
 
+  function stopConnections(item) {
+    if (item.source) item.source.close();
+    if (item.upload) item.upload.abort();
+  }
+
   function removeItem(item) {
     if (item.clipPreviewReplayTimer) {
       clearTimeout(item.clipPreviewReplayTimer);
@@ -2773,7 +2873,7 @@
     }
     if (isActive(item)) {
       item.status = 'canceled';
-      if (item.source) item.source.close();
+      stopConnections(item);
       render();
       void cancelServerJob(item).finally(() => {
         if (groupRunning) runQueue();
@@ -2782,7 +2882,7 @@
     }
 
     item.status = 'canceled';
-    if (item.source) item.source.close();
+    stopConnections(item);
     const index = items.indexOf(item);
     if (index !== -1) items.splice(index, 1);
     render();
@@ -2797,7 +2897,7 @@
     for (const item of items) {
       if (item.status === 'queued' || isActive(item)) {
         item.status = 'canceled';
-        if (item.source) item.source.close();
+        stopConnections(item);
         if (item.jobId) cancelRequests.push(cancelServerJob(item));
       }
     }
@@ -2819,6 +2919,18 @@
 
   addButton.addEventListener('click', () => {
     void queueInput();
+  });
+
+  compressButton.addEventListener('click', () => {
+    compressFileInput.click();
+  });
+
+  compressFileInput.addEventListener('change', () => {
+    const files = [...compressFileInput.files];
+    compressFileInput.value = '';
+    const queued = files.map(queueFile);
+    render();
+    for (const item of queued) startSingleItem(item);
   });
 
   clipInputButton.addEventListener('click', () => {

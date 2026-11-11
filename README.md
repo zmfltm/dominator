@@ -6,7 +6,7 @@ Supports YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, and Discord 
 
 ## Run
 
-Install Node.js 22+, pnpm, yt-dlp, and ffmpeg, then:
+Install Node.js 22+, pnpm, yt-dlp, and ffmpeg (with ffprobe), then:
 
 ```sh
 pnpm install
@@ -25,6 +25,7 @@ docker compose up -d --build
 
 - Paste links and press Enter to queue them. Click download to start.
 - Use clip to select part of a video.
+- Click compress to pick local video or audio files. They upload, shrink with ffmpeg (video to MP4, audio to MP3), and download back. Needs ffprobe, which ships with ffmpeg.
 - SoundCloud playlists save as individual tracks in their original audio format.
 - For Discord, paste the attachment link, not the message link. Audio saves as MP3. Copy a fresh link if it expires.
 
