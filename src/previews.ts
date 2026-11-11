@@ -4,17 +4,23 @@ import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
+import { fetchVideoMetadata } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
-import { youtubeJsRuntimeArgs } from './ytdlp';
+import type { Storyboard } from './storyboard';
 import { isTwitterUrl } from './validate';
+import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const PREVIEW_TEMP_PREFIX = 'dominator-preview-';
 export const PREVIEW_TTL_MS = 60 * 60 * 1000;
 export const PREVIEW_TIMEOUT_MS = 2 * 60 * 1000;
 export const MAX_RUNNING_PREVIEWS = 2;
-export const PREVIEW_FRAME_COUNT = 5;
-export const PREVIEW_FRAME_WIDTH = 120;
-export const PREVIEW_FRAME_HEIGHT = 68;
+export const PREVIEW_FRAME_COLUMNS = 10;
+export const PREVIEW_FRAME_ROWS = 3;
+export const PREVIEW_FRAME_COUNT = PREVIEW_FRAME_COLUMNS * PREVIEW_FRAME_ROWS;
+export const PREVIEW_FRAME_WIDTH = 160;
+export const PREVIEW_FRAME_HEIGHT = 90;
+// Frame spacing when the duration is unknown; matches the fallback fps below.
+const UNKNOWN_DURATION_INTERVAL = 10;
 
 export class PreviewLimitError extends Error {
   constructor(limit = MAX_RUNNING_PREVIEWS) {
@@ -58,6 +64,19 @@ export function previewSourceUrl(preview: Pick<Preview, 'id'>): string {
   return `/api/previews/${preview.id}/source`;
 }
 
+export function previewStoryboard(preview: Pick<Preview, 'id' | 'duration'>): Storyboard {
+  return {
+    width: PREVIEW_FRAME_WIDTH,
+    height: PREVIEW_FRAME_HEIGHT,
+    columns: PREVIEW_FRAME_COLUMNS,
+    rows: PREVIEW_FRAME_ROWS,
+    interval: preview.duration
+      ? Math.round(preview.duration / PREVIEW_FRAME_COUNT * 1000) / 1000
+      : UNKNOWN_DURATION_INTERVAL,
+    sheets: [previewSpriteUrl(preview)],
+  };
+}
+
 export function previewStatusBody(preview: Preview): Record<string, unknown> {
   return {
     previewId: preview.id,
@@ -66,12 +85,22 @@ export function previewStatusBody(preview: Preview): Record<string, unknown> {
     ...(preview.status === 'done' ? {
       spriteUrl: previewSpriteUrl(preview),
       sourceUrl: previewSourceUrl(preview),
+      storyboard: previewStoryboard(preview),
     } : {}),
     ...(preview.status === 'error' ? { error: preview.error ?? 'preview failed' } : {}),
   };
 }
 
-const PREVIEW_FORMAT = 'worst[height<=360][ext=mp4]/worst[height<=360]/worstvideo*[height<=360][ext=mp4]+worstaudio[ext=m4a]/worstvideo*[height<=360]+worstaudio/worst';
+// Plain HTTPS formats download far faster than HLS fragments on most hosts,
+// H.264 plays in every browser, and the sort keeps the original audio language.
+const PREVIEW_FORMAT = [
+  'bv*[height<=360][ext=mp4][protocol^=http][vcodec^=avc1]+ba[ext=m4a][protocol^=http]',
+  'b[height<=360][ext=mp4][protocol^=http]',
+  'bv*[height<=360][ext=mp4]+ba[ext=m4a]',
+  'b[height<=360]',
+  'bv*[height<=360]+ba',
+  'w',
+].join('/');
 
 // Twitter/X throttles progressive http MP4s, so try its HLS renditions first.
 const TWITTER_PREVIEW_FORMAT = `worstvideo*[height<=360][protocol^=m3u8]+worstaudio[protocol^=m3u8]/worst[height<=360][protocol^=m3u8]/${PREVIEW_FORMAT}`;
@@ -86,6 +115,8 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
     ...youtubeJsRuntimeArgs(url),
     '-f',
     previewFormat(url),
+    '-S',
+    'lang,res:240,+br',
     '--merge-output-format',
     'mp4',
     '--no-playlist',
@@ -99,29 +130,10 @@ export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
   ];
 }
 
-export function buildPreviewDurationArgs(url: string): string[] {
-  return [
-    '--ignore-config',
-    ...youtubeJsRuntimeArgs(url),
-    '--skip-download',
-    '--no-playlist',
-    '--no-warnings',
-    '--print',
-    'duration',
-    '--',
-    url,
-  ];
-}
-
-export function parsePreviewDuration(output: string): number | undefined {
-  const line = output
-    .split('\n')
-    .map((value) => value.trim())
-    .find((value) => value.length > 0 && value !== 'NA');
-  if (!line) return undefined;
-  const duration = Number(line);
-  if (!Number.isFinite(duration) || duration <= 0 || duration > 24 * 60 * 60) return undefined;
-  return Math.round(duration * 1000) / 1000;
+export function usablePreviewDuration(duration: number | undefined): number | undefined {
+  if (duration === undefined || !Number.isFinite(duration)) return undefined;
+  if (duration <= 0 || duration > 24 * 60 * 60) return undefined;
+  return duration;
 }
 
 export function buildFilmstripFfmpegArgs(
@@ -134,7 +146,7 @@ export function buildFilmstripFfmpegArgs(
     `fps=${fps.toFixed(6)}`,
     `scale=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}:force_original_aspect_ratio=decrease`,
     `pad=${PREVIEW_FRAME_WIDTH}:${PREVIEW_FRAME_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-    `tile=${PREVIEW_FRAME_COUNT}x1`,
+    `tile=${PREVIEW_FRAME_COLUMNS}x${PREVIEW_FRAME_ROWS}`,
   ].join(',');
 
   return [
@@ -225,9 +237,13 @@ export async function reapStalePreviews(ttlMs = PREVIEW_TTL_MS, now = Date.now()
 
 async function generatePreview(preview: Preview): Promise<void> {
   try {
-    const duration = await fetchPreviewDuration(preview);
+    // The duration usually comes from the metadata cache the client already
+    // warmed, so it runs alongside the download instead of before it.
+    const [duration, inputPath] = await Promise.all([
+      fetchPreviewDuration(preview.url),
+      downloadPreviewVideo(preview),
+    ]);
     preview.duration = duration;
-    const inputPath = await downloadPreviewVideo(preview);
     preview.sourcePath = inputPath;
     const spritePath = join(preview.dir, 'sprite.jpg');
     await createFilmstrip(preview, inputPath, spritePath, duration);
@@ -264,15 +280,9 @@ function runningPreviewCount(): number {
   return startingPreviews + [...previews.values()].filter((preview) => preview.status === 'running').length;
 }
 
-async function fetchPreviewDuration(preview: Preview): Promise<number | undefined> {
+async function fetchPreviewDuration(url: string): Promise<number | undefined> {
   try {
-    const { stdout } = await runProcess(
-      preview,
-      'yt-dlp',
-      buildPreviewDurationArgs(preview.url),
-      20_000,
-    );
-    return parsePreviewDuration(stdout);
+    return usablePreviewDuration((await fetchVideoMetadata(url)).duration);
   } catch {
     return undefined;
   }
