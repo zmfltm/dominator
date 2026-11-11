@@ -2762,7 +2762,8 @@
   function followJob(item) {
     const source = new EventSource('/api/jobs/' + item.jobId + '/events');
     item.source = source;
-    const isLive = () => item.source === source && isCurrent();
+    const attempt = item.attempt;
+    const isLive = () => item.source === source && item.attempt === attempt && items.includes(item);
 
     source.addEventListener('progress', (event) => {
       if (!isLive()) return;
