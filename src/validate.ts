@@ -8,14 +8,18 @@ const YOUTUBE_HOSTS = new Set([
 
 const DISCORD_ATTACHMENT_HOSTS = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
 
-const ALLOWED_HOSTS = new Set([
-  ...YOUTUBE_HOSTS,
-  ...DISCORD_ATTACHMENT_HOSTS,
+const TWITTER_HOSTS = new Set([
   'twitter.com',
   'www.twitter.com',
   'mobile.twitter.com',
   'x.com',
   'www.x.com',
+]);
+
+const ALLOWED_HOSTS = new Set([
+  ...YOUTUBE_HOSTS,
+  ...DISCORD_ATTACHMENT_HOSTS,
+  ...TWITTER_HOSTS,
   'instagram.com',
   'www.instagram.com',
   'm.instagram.com',
@@ -140,6 +144,18 @@ export function isYouTubeUrl(value: string): boolean {
     return (
       (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
       YOUTUBE_HOSTS.has(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isTwitterUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      TWITTER_HOSTS.has(parsed.hostname)
     );
   } catch {
     return false;
