@@ -7,6 +7,7 @@ import type { Readable } from 'node:stream';
 import { fetchVideoMetadata } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import type { Storyboard } from './storyboard';
+import { isTwitterUrl } from './validate';
 import { youtubeJsRuntimeArgs } from './ytdlp';
 
 export const PREVIEW_TEMP_PREFIX = 'dominator-preview-';
@@ -90,21 +91,30 @@ export function previewStatusBody(preview: Preview): Record<string, unknown> {
   };
 }
 
+// Plain HTTPS formats download far faster than HLS fragments on most hosts,
+// H.264 plays in every browser, and the sort keeps the original audio language.
+const PREVIEW_FORMAT = [
+  'bv*[height<=360][ext=mp4][protocol^=http][vcodec^=avc1]+ba[ext=m4a][protocol^=http]',
+  'b[height<=360][ext=mp4][protocol^=http]',
+  'bv*[height<=360][ext=mp4]+ba[ext=m4a]',
+  'b[height<=360]',
+  'bv*[height<=360]+ba',
+  'w',
+].join('/');
+
+// Twitter/X throttles progressive http MP4s, so try its HLS renditions first.
+const TWITTER_PREVIEW_FORMAT = `worstvideo*[height<=360][protocol^=m3u8]+worstaudio[protocol^=m3u8]/worst[height<=360][protocol^=m3u8]/${PREVIEW_FORMAT}`;
+
+function previewFormat(url: string): string {
+  return isTwitterUrl(url) ? TWITTER_PREVIEW_FORMAT : PREVIEW_FORMAT;
+}
+
 export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
   return [
     '--ignore-config',
     ...youtubeJsRuntimeArgs(url),
-    // Plain HTTPS formats download far faster than HLS fragments, H.264 plays
-    // in every browser, and the sort keeps the original audio language.
     '-f',
-    [
-      'bv*[height<=360][ext=mp4][protocol^=http][vcodec^=avc1]+ba[ext=m4a][protocol^=http]',
-      'b[height<=360][ext=mp4][protocol^=http]',
-      'bv*[height<=360][ext=mp4]+ba[ext=m4a]',
-      'b[height<=360]',
-      'bv*[height<=360]+ba',
-      'w',
-    ].join('/'),
+    previewFormat(url),
     '-S',
     'lang,res:240,+br',
     '--merge-output-format',

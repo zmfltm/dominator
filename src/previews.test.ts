@@ -26,6 +26,18 @@ describe('preview args', () => {
     expect(args.at(-1)).toBe(url);
   });
 
+  it('tries HLS first for Twitter/X previews', () => {
+    const args = buildPreviewYtDlpArgs('https://twitter.com/user/status/1', '/tmp/dominator-preview-test');
+    const format = args[args.indexOf('-f') + 1];
+
+    expect(format.startsWith('worstvideo*[height<=360][protocol^=m3u8]+worstaudio[protocol^=m3u8]/')).toBe(true);
+  });
+
+  it('keeps the default preview format for non-Twitter hosts', () => {
+    const args = buildPreviewYtDlpArgs('https://youtu.be/dQw4w9WgXcQ', '/tmp/dominator-preview-test');
+    expect(args[args.indexOf('-f') + 1].startsWith('bv*[height<=360][ext=mp4][protocol^=http][vcodec^=avc1]+')).toBe(true);
+  });
+
   it('builds a one-row ffmpeg filmstrip filter', () => {
     const args = buildFilmstripFfmpegArgs('/tmp/source.mp4', '/tmp/sprite.jpg', 120);
     const filter = args[args.indexOf('-vf') + 1];

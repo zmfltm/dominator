@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Dominator</title>
-<link rel="icon" type="image/png" href="/logo.png?v=464aa8a">
+<link rel="icon" type="image/png" href="/logo.png?v=sibyl2">
 <link rel="preload" href="/fonts/IoskeleyMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   @font-face {
@@ -17,15 +17,15 @@
   }
   :root {
     color-scheme: dark;
-    --bg: #000;
-    --fg: oklch(0.96 0.012 150);
-    --dim: oklch(0.68 0.035 150);
-    --line: oklch(0.3 0.035 150);
-    --surface: oklch(0.13 0.012 150);
-    --muted-surface: oklch(0.19 0.02 150);
-    --accent: oklch(0.86 0.21 145);
+    --bg: oklch(0.12 0.015 245);
+    --fg: oklch(0.9 0.03 230);
+    --dim: oklch(0.66 0.04 235);
+    --line: oklch(0.3 0.05 245);
+    --surface: oklch(0.15 0.02 245);
+    --muted-surface: oklch(0.19 0.025 245);
+    --accent: oklch(0.76 0.14 235);
     --glow: color-mix(in oklch, var(--accent) 45%, transparent);
-    --error: oklch(0.72 0.17 25);
+    --error: #ff8585;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -44,8 +44,8 @@
     z-index: -1;
     pointer-events: none;
     background:
-      repeating-linear-gradient(0deg, oklch(0.86 0.21 145 / 0.035) 0 1px, transparent 1px 3px),
-      radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.86 0.21 145 / 0.07), transparent 70%);
+      repeating-linear-gradient(0deg, oklch(0.76 0.14 235 / 0.035) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.76 0.14 235 / 0.07), transparent 70%);
   }
   ::selection { background: var(--accent); color: #000; }
   main {
@@ -66,7 +66,7 @@
     gap: 14px;
   }
   .logo {
-    width: 88px;
+    width: 128px;
     height: auto;
   }
   .input-wrap { position: relative; }
@@ -541,7 +541,7 @@
 <body>
 <main>
   <header class="brand">
-    <img class="logo" src="/logo-hd.png" width="264" height="264" alt="">
+    <img class="logo" src="/logo-hd.png?v=sibyl2" width="768" height="768" alt="">
   </header>
   <div class="input-wrap">
     <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled data-icon="close"></button>
