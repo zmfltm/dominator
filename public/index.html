@@ -1063,11 +1063,11 @@
   }
 
   function isRetryable(item) {
-    return item.status === 'canceled' || (item.kind === 'compress' && item.status === 'failed');
+    return item.status === 'canceled' || item.status === 'failed';
   }
 
   function restartableCount() {
-    return items.filter((item) => item.status === 'canceled').length;
+    return items.filter(isRetryable).length;
   }
 
   function toggleButton(button, show) {
@@ -2948,9 +2948,9 @@
     item.upload = null;
   }
 
-  function reactivateCanceledItems() {
+  function reactivateRetryableItems() {
     for (const item of items) {
-      if (item.status === 'canceled') resetForQueue(item);
+      if (isRetryable(item)) resetForQueue(item);
     }
   }
 
@@ -3136,7 +3136,7 @@
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     await queueInput();
-    reactivateCanceledItems();
+    reactivateRetryableItems();
     groupRunning = true;
     runQueue();
   });
