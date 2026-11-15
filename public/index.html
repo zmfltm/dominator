@@ -691,6 +691,7 @@
 <script>
   const MAX_ACTIVE_JOBS = 7;
   const MAX_CLIP_SECONDS = 24 * 60 * 60;
+  const LINKED_CLIP_SECONDS = 30;
   const DOUBLE_BACKSPACE_MS = 300;
   const main = document.querySelector('main');
   const form = document.getElementById('form');
@@ -947,6 +948,7 @@
     }
 
     if (!Number.isFinite(start) && !Number.isFinite(end)) return null;
+    if (Number.isFinite(start) && !Number.isFinite(end)) end = start + LINKED_CLIP_SECONDS;
     return {
       start: Number.isFinite(start) ? start : null,
       end: Number.isFinite(end) ? end : null,
@@ -970,6 +972,17 @@
     const completed = { start: startText, end: endText };
     if (!completed.start && completed.end) completed.start = '0:00';
     const start = parseClipTime(completed.start);
+    const end = parseClipTime(completed.end);
+    if (
+      Number.isFinite(start) &&
+      Number.isFinite(end) &&
+      typeof duration === 'number' &&
+      Number.isFinite(duration) &&
+      duration > start &&
+      end > duration
+    ) {
+      completed.end = formatClipTime(duration);
+    }
     if (
       completed.start &&
       !completed.end &&
