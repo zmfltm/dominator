@@ -9,7 +9,15 @@ describe('parseProgressLine', () => {
       percent: 42.3,
       downloadedBytes: 2_408_464,
       totalBytes: 5_693_768,
+      bytesPerSecond: 1_289_748,
+      etaSeconds: 3,
     });
+  });
+
+  it('parses hour-long ETAs and skips unknown speed', () => {
+    const line = '[download]   1.0% of ~ 2.00GiB at Unknown B/s ETA 1:02:03';
+    expect(parseProgressLine(line)).toMatchObject({ percent: 1, etaSeconds: 3723 });
+    expect(parseProgressLine(line)).not.toHaveProperty('bytesPerSecond');
   });
 
   it('parses a completed download line', () => {
@@ -53,6 +61,8 @@ describe('parseProgressLine', () => {
       percent: 0.1,
       downloadedBytes: 192_036,
       totalBytes: 192_036_209,
+      bytesPerSecond: 2_317_353,
+      etaSeconds: 82,
     });
   });
 });

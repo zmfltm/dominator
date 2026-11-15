@@ -39,24 +39,28 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 
 - Initial queued video downloads are MP4. SoundCloud tracks use best audio in the source container without conversion.
 - SoundCloud playlist links expand into one queue row per track and preserve playlist order in saved filenames.
-- Keep the UI flat with square corners. The idle page has no visible copy, helper text, or footer. Actions use angular SVG icons with accessible labels, including download. Use the Sibyl blue palette: a dark navy background, pale blue text, and a restrained blue accent, plus static (never animated) scanlines and a soft center glow behind the page.
-- The URL input is intentionally blank, with no placeholder text.
-- The search/input area should stay centered in the page and fixed in place as queue rows are added; rows grow downward underneath it.
-- Queued rows should be compact and show the fetched video title when available, falling back to the URL. Titles should wrap and use the full row width instead of truncating.
+- Look: a flat neutral near-black background (`#0B0B0C`) with at most one very soft radial highlight behind the input. No scanlines, glow, or HUD bracket corners. Colors live as custom properties on `:root`. The Sibyl blue is the only accent, used for the logo, the active Download button, focus rings, and progress fills. Everything else is neutral grey. Text contrast stays at or above 4.5:1, so meta text is at least about 60% white.
+- Type: the system sans stack for UI and titles. The vendored Ioskeley Mono is only for timestamps, durations, percentages, and file sizes, with tabular numbers. No italics. Body text is 15-16px and meta text 13px.
+- Layout: one centered column, max 640px wide, with the logo (`logo-hd.png`, a solid accent fill with no glow, shown at 48px) about 20vh from the top, then the input, then the list. Rows grow downward under the input. Phones get 16px side padding and no horizontal scroll.
+- Corners are modestly rounded: 12px for the field, Download button, rows, and clip panel; 6-8px for thumbnails and small controls.
+- The URL field is 56px tall with the placeholder "Paste a video link" and a visually hidden label. While it holds a URL, the detected site (inline SVG icon plus name, or the hostname for generic links) shows inside the field on the left. Never fetch external favicons.
+- For a single link, a quiet preview line under the field shows a small 16:9 thumbnail and the fetched title. It reuses the input metadata loader, debounced about 300ms after typing.
 - Do not show a global queued-count status like `1 queued`; the rows themselves are the queue.
-- Running rows should show percent plus downloaded and total size when yt-dlp reports a total.
-- The download button is visible by default, turns active-colored when usable, and is enabled when the input has a URL or queued rows exist.
-- Pressing Enter in the input queues URLs only; clicking download starts the queue.
-- The add button, clip button, and an outside-left borderless text clear icon are visible only while the URL input has text. Add uses a neutral color so it is distinct from download. The input-level clip button opens start/end fields, a taller draggable zoomable timeline, preview/reset/clip buttons, and a preview player for URLs queued from the current input. Links with `t`, `start`, `end`, or media fragment times should prefill clip fields when possible. Timelines should build sampled filmstrip previews when available, use fetched thumbnails as the fallback background, and gray out unselected regions.
+- The Download button is on the right with visible text, fixed width so it does not resize, enabled when the input has a URL or queued or retryable rows exist, and accent-colored when usable. Below 400px it stacks full width under the field.
+- Pressing Enter in the input queues URLs only; clicking Download starts the queue.
+- The clear-text, add, and Clip controls are visible only while the URL input has text. Compress shows only while the input is empty. Clear-text, add, and compress are quiet ghost icon buttons with tooltips and accessible names. Clip is a small text toggle with `aria-expanded`.
+- The input Clip toggle reveals the clip panel under the field with a short height ease: start/end fields, a taller draggable zoomable timeline, preview/reset/clip buttons, and a preview player for URLs queued from the current input. Links with `t`, `start`, `end`, or media fragment times prefill clip fields when possible (a start alone selects 30 seconds). Timelines build sampled filmstrip previews when available, use fetched thumbnails as the fallback background, and gray out unselected regions.
 - Holding Backspace in the URL input or double-tapping Backspace clears all input text.
-- Each row has a wide enough x button to remove that row before it starts. Started rows disable the x button and it must not turn red on hover.
-- A cancel button appears below the list while downloads are active and cancels active plus queued downloads.
-- After cancellation, the download button should reactivate and retry canceled rows when clicked.
-- Each queued, canceled, or invalid row has compact boxed controls: a clip button to reveal optional start/end clip fields plus a taller draggable zoomable timeline, preview/reset/clip buttons, a down-arrow button to start just that row, and an x button to remove it. Timelines should build sampled filmstrip previews when available, use fetched thumbnails as the fallback background, and gray out unselected regions. The preview button plays the selected range from the low-resolution preview source, and adjusting times while preview is open reloads and plays the updated range. Active rows reuse the x button to cancel only that row without canceling other active downloads. Disable row download arrows during group downloads or when max active jobs are already running, but allow multiple single-row downloads up to the max.
+- When there are no rows, one quiet line under the input reads "Downloads show up here."
+- Rows are about 64px tall: a 16:9 thumbnail (the source icon on a neutral box when there is none), a one-line title truncated with an ellipsis (full title in `title`), and a meta line such as `YouTube · Clip 26:03-26:33 · 0:30 · 12 MB` that shows only the known parts. Titles fall back to the URL.
+- Running rows show a thin progress bar plus percent and downloaded/total size when yt-dlp reports a total, plus speed and time left when yt-dlp reports them.
+- Done rows show a check and a "Save again" button that re-saves the finished file. They stay quiet but readable.
+- Failed rows show the error in plain text and a "Retry" button. Canceled rows also get "Retry". Invalid clip rows show the error and keep the clip editor so the clip can be fixed.
+- Row actions are real buttons with 44px hit targets, tooltips, and accessible names: a clip button for queued, canceled, or invalid rows that reveals the same clip editor as the input, a down-arrow to start just that row, and an x to remove it. On hover-capable pointers they appear on row hover or focus; on touch they are always visible. The preview button plays the selected range from the low-resolution preview source, and adjusting times while preview is open reloads and plays the updated range. Active rows reuse the x to cancel only that row. Started rows disable the x unless it cancels, and it never turns red on hover. Disable row arrows during group downloads or when max active jobs are already running, but allow multiple single-row downloads up to the max.
 - Starting one row must not auto-start the rest of the queue when that row finishes.
-- A clear button appears below the list when rows exist. Clearing also cancels active jobs.
-- The download button has a fixed width so it does not resize when it turns active-colored.
-- Completed rows should stay short, fade and italicize the title, hide progress/status and row-control borders, and should not show `convert to mp3`.
+- A list header above the rows holds small text buttons. "Cancel all" shows only while downloads are active and cancels active plus queued downloads. After cancellation, Download reactivates and retries canceled and failed rows.
+- "Clear history" shows when rows exist and asks inline before clearing ("Clear N items?" with Confirm and Keep; it also says active downloads will be canceled). Clearing also cancels active jobs. Never use `window.confirm`.
+- Motion: new rows fade in and slide up 4px with a 40ms stagger, only when first created, never on re-render or progress updates. Progress bars ease out. Under `prefers-reduced-motion: reduce`, rows only fade and transitions are off.
 
 ## Conventions
 
