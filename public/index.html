@@ -563,7 +563,7 @@
     .row-controls { margin-top: -6px; margin-bottom: -8px; }
     .job.has-action .row-controls { justify-self: start; margin: 2px 0 -6px -4px; }
     .job-url { padding-right: 8px; }
-    .job-progress .job-state .num { margin-left: 0; }
+    .job-progress .job-state, .job-progress .job-state .num { margin-left: 0; white-space: normal; }
     .row-controls button { min-width: 40px; }
     .clip-field { flex: 1; }
     .clip-field input { width: 100%; min-width: 0; font-size: 16px; }
@@ -1256,7 +1256,12 @@
       const downloaded = formatBytes(item.downloadedBytes);
       const total = formatBytes(item.totalBytes);
       const size = downloaded && total ? ' · ' + downloaded + ' / ' + total : '';
-      return item.percent.toFixed(1) + '%' + size;
+      const speed = formatBytes(item.bytesPerSecond);
+      const rate = speed ? ' · ' + speed + '/s' : '';
+      const left = Number.isFinite(item.etaSeconds) && item.percent < 100
+        ? ' · ' + formatClipTime(item.etaSeconds) + ' left'
+        : '';
+      return item.percent.toFixed(1) + '%' + size + rate + left;
     }
     if (item.status === 'uploading' || item.status === 'compressing') return Math.floor(item.percent) + '%';
     return '';
@@ -2505,6 +2510,8 @@
       percent: null,
       downloadedBytes: null,
       totalBytes: null,
+      bytesPerSecond: null,
+      etaSeconds: null,
       error: null,
       jobId: null,
       activeClip: null,
@@ -3003,6 +3010,8 @@
         item.percent = progress.percent;
         item.downloadedBytes = progress.downloadedBytes;
         item.totalBytes = progress.totalBytes;
+        item.bytesPerSecond = progress.bytesPerSecond ?? null;
+        item.etaSeconds = progress.etaSeconds ?? null;
       } else if (progress.stage === 'compressing') {
         item.status = 'compressing';
         item.percent = progress.percent;
@@ -3042,6 +3051,8 @@
     item.percent = null;
     item.downloadedBytes = null;
     item.totalBytes = null;
+    item.bytesPerSecond = null;
+    item.etaSeconds = null;
     item.error = null;
     item.jobId = null;
     item.source = null;
