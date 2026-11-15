@@ -17,292 +17,213 @@
   }
   :root {
     color-scheme: dark;
-    --bg: oklch(0.12 0.015 245);
-    --fg: oklch(0.9 0.03 230);
-    --dim: oklch(0.66 0.04 235);
-    --line: oklch(0.3 0.05 245);
-    --surface: oklch(0.15 0.02 245);
-    --muted-surface: oklch(0.19 0.025 245);
+    --bg: #0b0b0c;
+    --fg: #ededef;
+    --fg-quiet: rgb(255 255 255 / 0.82);
+    --muted: rgb(255 255 255 / 0.62);
+    --faint: rgb(255 255 255 / 0.36);
+    --border: rgb(255 255 255 / 0.10);
+    --border-strong: rgb(255 255 255 / 0.18);
+    --surface: rgb(255 255 255 / 0.03);
+    --surface-hover: rgb(255 255 255 / 0.06);
+    --surface-active: rgb(255 255 255 / 0.10);
     --accent: oklch(0.76 0.14 235);
-    --glow: color-mix(in oklch, var(--accent) 45%, transparent);
-    --error: #ff8585;
+    --accent-hover: oklch(0.81 0.12 235);
+    --accent-fg: #0b0b0c;
+    --ring: color-mix(in oklch, var(--accent) 40%, transparent);
+    --focus: color-mix(in oklch, var(--accent) 75%, transparent);
+    --error: #ff8f8f;
+    --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Ioskeley Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: var(--bg);
-    color: var(--fg);
-    font-family: 'Ioskeley Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 17px;
-    min-height: 100vh;
-    caret-color: var(--accent);
-  }
-  /* Static phosphor wash and scanlines; painted once, never animated. */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
+    min-height: 100svh;
     background:
-      repeating-linear-gradient(0deg, oklch(0.76 0.14 235 / 0.035) 0 1px, transparent 1px 3px),
-      radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.76 0.14 235 / 0.07), transparent 70%);
+      radial-gradient(ellipse 560px 280px at 50% calc(20svh + 100px), rgb(255 255 255 / 0.035), transparent 70%) no-repeat,
+      var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+    caret-color: var(--accent);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
   }
-  ::selection { background: var(--accent); color: #000; }
+  ::selection { background: color-mix(in oklch, var(--accent) 35%, transparent); }
+  [hidden] { display: none !important; }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .num {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.92em;
+  }
   main {
-    width: min(680px, calc(100% - 64px));
-    position: fixed;
-    top: 50svh;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    width: 100%;
+    max-width: 672px;
+    margin: 0 auto;
+    padding: 20svh 16px 96px;
   }
   .brand {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: calc(100% + 32px);
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
+    justify-content: center;
+    margin-bottom: 24px;
   }
-  .logo {
-    width: 128px;
-    height: auto;
-  }
-  .input-wrap { position: relative; }
-  form {
-    display: flex;
-    align-items: stretch;
-    min-height: 56px;
-    padding: 0;
-    border: 1px solid var(--line);
-    border-radius: 0;
-    background: var(--surface);
-  }
-  form:focus-within {
-    border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
-    box-shadow: 0 0 12px color-mix(in oklch, var(--accent) 12%, transparent);
-  }
-  input {
-    flex: 1;
-    min-width: 0;
-    padding: 0.5rem 0.65rem;
-    background: none;
-    border: 0;
-    color: var(--fg);
-    font: inherit;
-    outline: none;
-  }
+  .logo { display: block; width: 48px; height: 48px; }
+
   button {
     background: none;
     border: 0;
-    color: var(--accent);
+    color: inherit;
     font: inherit;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.7rem;
     cursor: pointer;
-    transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+    touch-action: manipulation;
+    transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
   }
-  form button {
-    min-height: 46px;
-    padding: 0 14px;
-    border-radius: 0;
+  button:disabled { cursor: default; }
+  button:focus-visible,
+  input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .control-icon { display: block; width: 18px; height: 18px; flex: 0 0 auto; pointer-events: none; }
+  button:has(.control-icon) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
+  .composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; }
+  .field {
+    flex: 1;
+    min-width: 0;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 6px 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .field:focus-within {
+    border-color: color-mix(in oklch, var(--accent) 50%, var(--border));
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+  #url {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    background: none;
+    border: 0;
+    outline: none;
+    color: var(--fg);
+    font: inherit;
+    font-size: 16px;
+  }
+  #url::placeholder { color: var(--muted); opacity: 1; }
+  .source-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 8px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 6px;
+    background: var(--surface-hover);
+    color: var(--fg-quiet);
+    font-size: 13px;
     white-space: nowrap;
   }
-  #add,
-  #compress,
-  #clipInput { color: var(--fg); }
-  #clipInput.active { color: var(--accent); }
-  #download {
-    width: 64px;
-    flex: 0 0 64px;
-    border-left: 1px solid var(--line);
-  }
-  #clearText {
-    position: absolute;
-    top: 6px;
-    right: 100%;
-    width: 28px;
-    height: 44px;
-    color: var(--dim);
-    font-size: 20px;
-  }
-  #download.ready {
-    background: color-mix(in oklch, var(--accent) 10%, var(--surface));
-    color: var(--accent);
-  }
-  #download.ready .control-icon,
-  .clip-toggle.active .control-icon,
-  #clipInput.active .control-icon { filter: drop-shadow(0 0 3px var(--glow)); }
-  button:disabled { color: var(--dim); cursor: not-allowed; }
-  .row-controls {
+  .source-badge svg { display: block; width: 16px; height: 16px; }
+  .ghost {
     flex: 0 0 auto;
-    align-self: flex-start;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    color: var(--muted);
+  }
+  #clipInput {
+    flex: 0 0 auto;
+    height: 32px;
+    margin: 0 4px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  #clipInput.active,
+  #clipInput[aria-expanded='true'] { color: var(--fg); border-color: var(--border-strong); background: var(--surface-hover); }
+  #download {
+    width: 136px;
+    height: 56px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  #download.ready { border-color: transparent; background: var(--accent); color: var(--accent-fg); }
+  #download:not(:disabled):active { background: var(--accent-hover); }
+
+  .input-preview {
+    grid-column: 1 / -1;
     display: flex;
     align-items: center;
-    gap: 0.28rem;
+    gap: 10px;
+    margin-top: 10px;
+    padding-inline: 4px;
   }
-  .download-one,
-  .remove-job {
-    flex: 0 0 1.55rem;
-    width: 1.55rem;
-    height: 1.45rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--line);
-    color: var(--dim);
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 0.9rem;
-    font-weight: 700;
-    line-height: 1;
-    padding: 0;
+  .input-preview-thumb {
+    flex: 0 0 auto;
+    width: 48px;
+    aspect-ratio: 16 / 9;
+    border-radius: 4px;
+    background: var(--surface-hover);
+    object-fit: cover;
   }
-  .download-one:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
-  .remove-job:not(:disabled):hover { border-color: var(--error); color: var(--error); }
-  .remove-job.cancel-active:not(:disabled):hover { border-color: var(--dim); color: var(--fg); }
-  .download-one:disabled,
-  .remove-job:disabled { border-color: var(--line); color: var(--dim); cursor: default; }
-  .clip-toggle {
-    flex: 0 0 3.25rem;
-    height: 1.45rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--line);
-    color: var(--dim);
-    font-size: 0.62rem;
-    line-height: 1;
-    padding: 0;
+  .input-preview-title {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--fg-quiet);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .clip-toggle.active {
-    color: var(--accent);
-    border-color: var(--accent);
-    box-shadow: none;
-  }
-  .clip-toggle:not(:disabled):hover { color: var(--fg); border-color: var(--fg); }
-  .clip-toggle:disabled { border-color: var(--line); color: var(--dim); cursor: default; }
-  #cancel { color: var(--error); }
-  [hidden] { display: none !important; }
-  .status {
-    position: absolute;
-    top: calc(100% + 12px);
-    left: 0;
-    right: 0;
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--dim);
-  }
-  .status.error { color: var(--error); }
-  .queue {
-    position: absolute;
-    top: calc(100% + 40px);
-    left: 0;
-    right: 0;
-    max-height: calc(50svh - 100px);
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .jobs {
-    flex: 0 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
-  }
-  .jobs:empty { display: none; }
-  .job {
-    border: 1px solid var(--line);
-    border-radius: 0;
-    padding: 12px;
+
+  .reveal {
     display: grid;
-    gap: 8px;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition: grid-template-rows 180ms var(--ease-out), visibility 0s linear 180ms;
+  }
+  .reveal.open {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: grid-template-rows 180ms var(--ease-out), visibility 0s;
+  }
+  .reveal-inner { min-height: 0; overflow: hidden; }
+  .input-clip-panel {
+    margin-top: 10px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
     background: var(--surface);
   }
-  .job.complete {
-    padding-block: 4px;
-    background: transparent;
-    border-color: transparent;
-  }
-  .job.complete .job-url { color: var(--dim); font-style: italic; opacity: 0.75; }
-  .job.complete .row-controls button,
-  .job.complete .row-controls button:hover { border-color: transparent; }
-  .job-top {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    width: 100%;
-  }
-  .job-title {
-    min-width: 0;
-    width: 100%;
-    display: flex;
-    align-items: flex-start;
-    gap: 0.4rem;
-  }
-  .site-icon {
-    flex: 0 0 auto;
-    width: 16px;
-    height: 16px;
-    margin-top: 0.15rem;
-    color: var(--fg);
-    opacity: 0.9;
-  }
-  .site-icon svg { display: block; width: 100%; height: 100%; }
-  .job-text { min-width: 0; width: 100%; }
-  .job-clip {
-    margin-top: 2px;
-    color: var(--accent);
-    font-size: 12px;
-    line-height: 1.5;
-    font-variant-numeric: tabular-nums;
-  }
-  .job.complete .job-clip { color: var(--dim); opacity: 0.75; }
-  .job-url {
-    min-width: 0;
-    width: 100%;
-    color: var(--fg);
-    font-size: 14px;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
+
   .clip-panel {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 12px;
-    color: var(--dim);
-    font-size: 12px;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 13px;
   }
-  .input-clip-panel {
-    position: absolute;
-    top: calc(100% + 12px);
-    left: 0;
-    right: 0;
-    z-index: 2;
-    border: 1px solid var(--line);
-    border-radius: 0;
-    background: var(--surface);
-    padding: 16px;
-  }
-  .input-wrap.input-clip-open ~ .status {
-    transform: translateY(calc(var(--input-clip-height, 0px) + 0.5rem));
-  }
-  .input-wrap.input-clip-open ~ .queue {
-    top: calc(100% + var(--input-clip-height, 0px) + 56px);
-    max-height: max(160px, calc(50svh - var(--input-clip-height, 0px) - 116px));
-  }
-  .clip-field {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
+  .clip-field { display: flex; align-items: center; }
   .clip-field > span {
     position: absolute;
     width: 1px;
@@ -312,40 +233,48 @@
     white-space: nowrap;
   }
   .clip-field input {
-    flex: 0 0 5.6rem;
-    width: 5.6rem;
-    border: 1px solid var(--line);
-    padding: 0.22rem 0.3rem;
+    width: 7rem;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
     color: var(--fg);
-    font-size: 0.72rem;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
   }
-  .clip-field input:disabled { color: var(--dim); }
+  .clip-field input:focus-visible { border-color: color-mix(in oklch, var(--accent) 50%, var(--border)); outline-color: var(--ring); outline-offset: 0; }
+  .clip-field input:disabled { color: var(--muted); }
   .clear-clip,
   .preview-clip {
-    border: 1px solid var(--line);
-    color: var(--dim);
-    padding: 0.32rem 0.55rem;
-    font-size: 0.62rem;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--fg-quiet);
   }
-  .clear-clip:not(:disabled):hover,
-  .preview-clip:not(:disabled):hover { color: var(--fg); border-color: var(--fg); }
   .clear-clip:disabled,
-  .preview-clip:disabled { color: var(--dim); cursor: default; }
+  .preview-clip:disabled { color: var(--faint); }
   #inputClipTrack,
   #inputClipPreviewPanel,
   .clip-preview-panel,
   .clip-track-wrap {
     flex: 1 0 100%;
     display: grid;
-    gap: 0.2rem;
+    gap: 6px;
   }
+  #inputClipTrack:empty,
+  #inputClipPreviewPanel:empty { display: none; }
   .clip-track {
     position: relative;
-    height: 4.8rem;
-    border: 1px solid var(--line);
+    height: 88px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
     overflow: hidden;
     touch-action: none;
-    background: repeating-linear-gradient(90deg, var(--surface) 0 0.55rem, var(--muted-surface) 0.55rem 1.1rem);
+    background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.03) 0 0.55rem, rgb(255 255 255 / 0.06) 0.55rem 1.1rem);
   }
   .clip-track.has-thumb {
     background:
@@ -377,9 +306,11 @@
     position: fixed;
     z-index: 50;
     width: 240px;
-    border: 1px solid var(--accent);
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
     background: #000;
-    box-shadow: 0 0 14px var(--glow);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
     pointer-events: none;
   }
   .frame-tip-image {
@@ -390,7 +321,8 @@
   .frame-tip-image canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .frame-tip-time {
     padding: 3px 6px;
-    color: var(--accent);
+    color: var(--fg);
+    font-family: var(--mono);
     font-size: 13px;
     font-variant-numeric: tabular-nums;
     text-align: center;
@@ -399,7 +331,7 @@
     content: '';
     position: absolute;
     inset: 0.35rem 0;
-    background: repeating-linear-gradient(90deg, transparent 0 2.2rem, rgba(232, 232, 232, 0.14) 2.2rem 2.25rem);
+    background: repeating-linear-gradient(90deg, transparent 0 2.2rem, rgb(255 255 255 / 0.10) 2.2rem 2.25rem);
     pointer-events: none;
   }
   .clip-outside {
@@ -413,128 +345,236 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    background: color-mix(in oklch, var(--accent) 15%, transparent);
-    border-inline: 1px solid var(--accent);
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+    border-block: 2px solid var(--accent);
   }
   .clip-handle {
     position: absolute;
-    top: -1px;
-    bottom: -1px;
-    width: 0.58rem;
+    top: 0;
+    bottom: 0;
+    width: 10px;
     transform: translateX(-50%);
-    border-inline: 1px solid #000;
+    border-radius: 3px;
     background: var(--accent);
-    box-shadow: 0 0 6px var(--glow);
     cursor: ew-resize;
     padding: 0;
+  }
+  .clip-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 16px;
+    border-radius: 1px;
+    background: rgb(0 0 0 / 0.45);
+    transform: translate(-50%, -50%);
   }
   .clip-track-tools {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 8px;
   }
-  .clip-track-zoom {
-    display: flex;
-    gap: 0.25rem;
-  }
-  .clip-zoom {
-    min-width: 1.6rem;
-    padding-inline: 0.35rem;
-  }
+  .clip-track-zoom { display: flex; gap: 4px; }
+  .clip-zoom { min-width: 36px; }
   .clip-track-note,
   .clip-preview-note {
-    color: var(--dim);
-    font-size: 0.6rem;
-    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
   }
   .clip-preview-player {
     flex: 1 0 100%;
     width: 100%;
     max-height: 260px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     background: #050505;
   }
-  .job-state {
-    color: var(--dim);
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
+
+  .status { margin-top: 10px; padding-inline: 4px; color: var(--muted); font-size: 13px; }
+  .status:empty { display: none; }
+  .status.error { color: var(--error); }
+
+  .queue { margin-top: 28px; }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; }
+  .list-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    min-height: 36px;
+    margin-bottom: 6px;
   }
-  .job-state.error { color: var(--error); }
-  .bar { height: 2px; background: var(--line); overflow: hidden; }
+  .clear-confirm { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
+  .confirm-text { margin-right: 6px; color: var(--fg-quiet); font-size: 13px; }
+  .text-button {
+    position: relative;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .text-button.danger { color: var(--error); }
+  .text-button::after,
+  .text-action::after { content: ''; position: absolute; inset: -6px -2px; }
+
+  .jobs { display: flex; flex-direction: column; gap: 6px; }
+  .jobs:empty { display: none; }
+  .job {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'thumb title controls'
+      'thumb sub controls';
+    column-gap: 12px;
+    row-gap: 3px;
+    min-height: 64px;
+    padding: 9px 6px 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+  .job.complete { background: transparent; }
+  .job-thumb {
+    grid-area: thumb;
+    align-self: center;
+    width: 76px;
+    aspect-ratio: 16 / 9;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--surface-hover);
+    color: var(--muted);
+  }
+  .job-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .job-thumb svg { display: block; width: 20px; height: 20px; }
+  .job-url {
+    grid-area: title;
+    align-self: end;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--fg);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .job.complete .job-url { color: var(--fg-quiet); font-weight: 400; }
+  .job-sub { grid-area: sub; align-self: start; min-width: 0; }
+  .job-meta,
+  .job-state {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .job-state.error { color: var(--error); white-space: normal; }
+  .job-progress { display: grid; gap: 5px; padding-top: 3px; }
+  .job-progress .job-state { display: flex; flex-wrap: wrap; column-gap: 8px; }
+  .job-progress .job-state .num { margin-left: auto; color: var(--fg-quiet); }
+  .bar { height: 3px; overflow: hidden; border-radius: 2px; background: var(--surface-active); }
   .bar div {
     height: 100%;
+    border-radius: inherit;
     background: var(--accent);
-    box-shadow: 0 0 6px var(--glow);
     transform: scaleX(0);
     transform-origin: left;
-    transition: transform 0.25s linear;
+    transition: transform 300ms var(--ease-out);
   }
-  .list-actions {
-    flex: 0 0 auto;
+  .row-controls {
+    grid-area: controls;
+    align-self: center;
     display: flex;
-    justify-content: flex-end;
-    gap: 16px;
+    align-items: center;
+    gap: 2px;
   }
-  .list-actions:not(:has(> :not([hidden]))) { display: none; }
-  .control-icon { display: block; width: 20px; height: 20px; pointer-events: none; }
-  button:has(.control-icon) { display: inline-flex; align-items: center; justify-content: center; }
-  form button { min-width: 44px; }
-  form::before, form::after {
-    content: '';
-    position: absolute;
-    width: 7px;
-    height: 7px;
-    border-color: color-mix(in oklch, var(--accent) 30%, var(--line));
-    border-style: solid;
-    pointer-events: none;
+  .row-controls button {
+    min-width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    color: var(--muted);
   }
-  form::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
-  form::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
-  button { text-transform: none; letter-spacing: 0; touch-action: manipulation; }
-  input { font-size: 16px; touch-action: manipulation; }
-  button:not(:disabled):active { background-color: var(--muted-surface); }
-  button:focus-visible, input:focus-visible { outline: 1px solid var(--dim); outline-offset: 2px; }
-  /* The surrounding form supplies the URL field's focus indicator. */
-  #url:focus-visible { outline: none; }
-  .row-controls { gap: 6px; }
-  .row-controls button { min-width: 32px; height: 30px; border-radius: 0; color: var(--dim); }
-  .clip-toggle { flex-basis: 32px; }
-  .clear-clip, .preview-clip, .clip-field input { min-height: 34px; border-radius: 0; }
-  .clip-track { height: 88px; border-radius: 0; }
-  .clip-track-note, .clip-preview-note { font-size: 11px; letter-spacing: 0; line-height: 1.5; }
-  .job-state { font-size: 11px; letter-spacing: 0; line-height: 1.5; font-variant-numeric: tabular-nums; }
-  .bar { border-radius: 0; }
-  .list-actions button { min-height: 36px; padding: 0 8px; }
+  .row-controls .text-action {
+    position: relative;
+    height: 32px;
+    margin-inline: 4px;
+    padding: 0 12px 0 10px;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    font-size: 13px;
+  }
+  .row-controls .text-action .control-icon { width: 16px; height: 16px; }
+  .row-controls button:disabled { color: var(--faint); }
+  .clip-toggle.active,
+  .clip-toggle[aria-expanded='true'] { color: var(--fg); }
+  .done-mark { display: inline-flex; padding-inline: 4px; color: var(--muted); }
+  .job > .clip-panel { grid-column: 1 / -1; margin: 10px 4px 4px 0; }
+
+  @keyframes row-in { from { opacity: 0; transform: translateY(4px); } }
+  @keyframes row-fade { from { opacity: 0; } }
+  .job.entering { animation: row-in 200ms var(--ease-out) both; }
+
   @media (hover: hover) and (pointer: fine) {
-    form button:not(:disabled):hover { background: var(--muted-surface); }
-    #download.ready:hover { background: color-mix(in oklch, var(--accent) 12%, var(--surface)); }
+    .ghost:not(:disabled):hover,
+    .text-button:not(:disabled):hover,
+    .clear-clip:not(:disabled):hover,
+    .preview-clip:not(:disabled):hover,
+    .row-controls button:not(:disabled):hover,
+    #clipInput:not(:disabled):hover { color: var(--fg); background: var(--surface-hover); }
+    .text-button.danger:hover { color: var(--error); }
+    #download.ready:hover { background: var(--accent-hover); }
+    .row-controls .reveal-on-hover { opacity: 0; transition: opacity 120ms ease, color 120ms ease, background-color 120ms ease; }
+    .job:hover .reveal-on-hover,
+    .job:focus-within .reveal-on-hover,
+    .job.clip-open .reveal-on-hover { opacity: 1; }
   }
   @media (pointer: coarse) {
-    .row-controls button, .clear-clip, .preview-clip, .clip-zoom, .list-actions button { min-width: 44px; min-height: 44px; }
+    .ghost { width: 44px; height: 44px; }
+    .clear-clip, .preview-clip, .clip-zoom { min-width: 44px; height: 44px; }
+    .clip-field input { height: 44px; }
     .clip-handle { width: 20px; }
   }
-  @media (max-width: 620px) {
-    main { width: calc(100% - 48px); top: 42svh; }
-    .brand { bottom: calc(100% + 24px); }
-    form.has-input { flex-wrap: wrap; }
-    form.has-input input { flex-basis: 100%; min-height: 48px; border-bottom: 1px solid var(--line); margin-bottom: 7px; }
-    form button { flex: 1; padding-inline: 10px; }
-    #download { width: 64px; flex-basis: 64px; }
-    .job-top { flex-direction: column; gap: 8px; }
-    .row-controls { align-self: flex-end; }
-    .job-title { gap: 8px; }
-    .input-clip-panel { padding: 12px; }
+  @media (max-width: 520px) {
+    .source-name { display: none; }
+    .source-badge { padding: 4px; margin-right: 6px; }
+    .field { padding-left: 12px; }
+    .job {
+      grid-template-areas:
+        'thumb title title'
+        'thumb sub controls';
+      padding-right: 2px;
+      row-gap: 0;
+    }
+    .job.has-action {
+      grid-template-areas:
+        'thumb title title'
+        'thumb sub sub'
+        'thumb controls controls';
+    }
+    .job-thumb { width: 64px; }
+    .job-sub { align-self: center; }
+    .row-controls { margin-top: -6px; margin-bottom: -8px; }
+    .job.has-action .row-controls { justify-self: start; margin: 2px 0 -6px -10px; }
+    .row-controls button { min-width: 40px; }
     .clip-field { flex: 1; }
-    .clip-field input { min-width: 0; font-size: 16px; }
-    .queue { max-height: calc(58svh - 100px); }
+    .clip-field input { width: 100%; min-width: 0; font-size: 16px; }
+    .input-clip-panel { padding: 12px; }
   }
-  @media (max-height: 600px) {
-    main { position: relative; top: auto; left: auto; transform: none; margin: 160px auto 32px; }
-    .queue, .input-wrap.input-clip-open ~ .queue { max-height: none; padding-bottom: 32px; }
+  @media (max-width: 399px) {
+    .composer { grid-template-columns: minmax(0, 1fr); }
+    .input-preview { order: 1; margin-bottom: 2px; }
+    #download { order: 2; width: 100%; height: 52px; margin-top: 8px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; }
+    .job.entering { animation-name: row-fade; }
   }
 </style>
 </head>
@@ -544,38 +584,56 @@
     <img class="logo" src="/logo-hd.png?v=sibyl2" width="768" height="768" alt="">
   </header>
   <div class="input-wrap">
-    <button id="clearText" type="button" title="clear text" aria-label="clear text" hidden disabled data-icon="close"></button>
-    <form id="form">
-      <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
-      <button id="add" type="button" hidden disabled aria-label="add to queue" data-icon="add"></button>
-      <button id="clipInput" type="button" hidden disabled aria-label="edit clip" data-icon="clip"></button>
-      <button id="compress" type="button" title="compress file" aria-label="compress file" data-icon="compress"></button>
-      <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
+    <form id="form" class="composer">
+      <div class="field">
+        <label for="url" class="visually-hidden">Video link</label>
+        <span id="inputSource" class="source-badge" hidden></span>
+        <input id="url" type="text" placeholder="Paste a video link" autofocus spellcheck="false" autocomplete="off">
+        <button id="clearText" class="ghost" type="button" title="Clear text" aria-label="Clear text" hidden disabled data-icon="close"></button>
+        <button id="add" class="ghost" type="button" title="Add to queue" aria-label="Add to queue" hidden disabled data-icon="add"></button>
+        <button id="compress" class="ghost" type="button" title="Compress a file" aria-label="Compress a file" data-icon="compress"></button>
+        <button id="clipInput" type="button" title="Set a clip" hidden disabled aria-expanded="false" aria-controls="inputClipPanel">Clip</button>
+      </div>
+      <button id="download" type="submit" disabled data-icon="download"><span class="button-label">Download</span></button>
+      <div id="inputPreview" class="input-preview" hidden>
+        <img id="inputPreviewThumb" class="input-preview-thumb" alt="">
+        <p id="inputPreviewTitle" class="input-preview-title"></p>
+      </div>
     </form>
     <input id="compressFile" type="file" accept="video/*,audio/*" multiple hidden tabindex="-1" aria-hidden="true">
-    <div id="inputClipPanel" class="clip-panel input-clip-panel" hidden>
-      <label class="clip-field">
-        <span>start</span>
-        <input id="inputClipStart" name="input-clip-start" type="text" aria-label="clip start time">
-      </label>
-      <label class="clip-field">
-        <span>end</span>
-        <input id="inputClipEnd" name="input-clip-end" type="text" aria-label="clip end time">
-      </label>
-      <button id="inputClipClear" class="clear-clip" type="button" disabled aria-label="reset clip" data-icon="reset"></button>
-      <button id="inputClipPreview" class="preview-clip" type="button" disabled aria-label="preview clip" data-icon="play"></button>
-      <button id="inputClipDownload" class="preview-clip" type="button" disabled aria-label="download clip" data-icon="download"></button>
-      <div id="inputClipTrack"></div>
-      <div id="inputClipPreviewPanel"></div>
+    <div id="inputClipReveal" class="reveal">
+      <div class="reveal-inner">
+        <div id="inputClipPanel" class="clip-panel input-clip-panel">
+          <label class="clip-field">
+            <span>start</span>
+            <input id="inputClipStart" name="input-clip-start" type="text" aria-label="Clip start time" placeholder="Start">
+          </label>
+          <label class="clip-field">
+            <span>end</span>
+            <input id="inputClipEnd" name="input-clip-end" type="text" aria-label="Clip end time" placeholder="End">
+          </label>
+          <button id="inputClipClear" class="clear-clip" type="button" disabled title="Reset clip" aria-label="Reset clip" data-icon="reset"></button>
+          <button id="inputClipPreview" class="preview-clip" type="button" disabled title="Preview clip" aria-label="Preview clip" data-icon="play"></button>
+          <button id="inputClipDownload" class="preview-clip" type="button" disabled title="Download clip" aria-label="Download clip" data-icon="download"></button>
+          <div id="inputClipTrack"></div>
+          <div id="inputClipPreviewPanel"></div>
+        </div>
+      </div>
     </div>
   </div>
   <p id="status" class="status" role="status" aria-live="polite"></p>
   <div class="queue">
-    <div id="jobs" class="jobs"></div>
-    <div class="list-actions">
-      <button id="cancel" type="button" hidden aria-label="cancel downloads" data-icon="stop"></button>
-      <button id="clear" type="button" hidden aria-label="clear queue" data-icon="clear"></button>
+    <div id="listHeader" class="list-header" hidden>
+      <button id="cancel" class="text-button" type="button" hidden>Cancel all</button>
+      <button id="clear" class="text-button" type="button" hidden>Clear history</button>
+      <div id="clearConfirm" class="clear-confirm" hidden>
+        <span id="clearConfirmText" class="confirm-text"></span>
+        <button id="clearConfirmYes" class="text-button danger" type="button" aria-describedby="clearConfirmText">Confirm</button>
+        <button id="clearKeep" class="text-button" type="button">Keep</button>
+      </div>
     </div>
+    <div id="jobs" class="jobs"></div>
+    <p id="empty" class="empty">Downloads show up here.</p>
   </div>
 </main>
 <script>
@@ -583,10 +641,16 @@
   const MAX_CLIP_SECONDS = 24 * 60 * 60;
   const LINKED_CLIP_SECONDS = 30;
   const DOUBLE_BACKSPACE_MS = 300;
-  const main = document.querySelector('main');
+  const ROW_ENTER_MS = 200;
+  const ROW_STAGGER_MS = 40;
+  const ROW_STAGGER_MAX_STEPS = 2;
   const form = document.getElementById('form');
-  const inputWrap = document.querySelector('.input-wrap');
   const urlInput = document.getElementById('url');
+  const inputSource = document.getElementById('inputSource');
+  const inputPreview = document.getElementById('inputPreview');
+  const inputPreviewThumb = document.getElementById('inputPreviewThumb');
+  const inputPreviewTitle = document.getElementById('inputPreviewTitle');
+  const inputClipReveal = document.getElementById('inputClipReveal');
   const addButton = document.getElementById('add');
   const clipInputButton = document.getElementById('clipInput');
   const inputClipPanel = document.getElementById('inputClipPanel');
@@ -603,6 +667,12 @@
   const compressFileInput = document.getElementById('compressFile');
   const cancelButton = document.getElementById('cancel');
   const clearButton = document.getElementById('clear');
+  const listHeader = document.getElementById('listHeader');
+  const clearConfirm = document.getElementById('clearConfirm');
+  const clearConfirmText = document.getElementById('clearConfirmText');
+  const clearConfirmYes = document.getElementById('clearConfirmYes');
+  const clearKeep = document.getElementById('clearKeep');
+  const emptyLine = document.getElementById('empty');
   const jobsList = document.getElementById('jobs');
   const statusLine = document.getElementById('status');
 
@@ -616,7 +686,7 @@
     reset: 'M4 8V4 M4 8h4 M4 8l4-4h5l4 4v5l-4 4H7l-3-3',
     play: 'M6 3l10 7-10 7z',
     stop: 'M5 5h10v10H5z',
-    clear: 'M3 5h14 M8 5V3h4v2 M5 5v12h10V5 M8 8v6 M12 8v6',
+    check: 'M4 10.5l4 4 8-9',
   };
 
   function setButtonIcon(button, name) {
@@ -627,14 +697,23 @@
     svg.setAttribute('fill', 'none');
     svg.setAttribute('stroke', 'currentColor');
     svg.setAttribute('stroke-width', '1.5');
-    svg.setAttribute('stroke-linecap', 'square');
-    svg.setAttribute('stroke-linejoin', 'miter');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
     svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', CONTROL_ICONS[name]);
     svg.append(path);
-    button.replaceChildren(svg);
+    const label = button.querySelector('.button-label');
+    button.replaceChildren(svg, ...(label ? [label] : []));
     button.dataset.icon = name;
+  }
+
+  function setButtonText(button, icon, text) {
+    const label = document.createElement('span');
+    label.className = 'button-label';
+    label.textContent = text;
+    button.append(label);
+    setButtonIcon(button, icon);
   }
 
   document.querySelectorAll('button[data-icon]').forEach((button) => {
@@ -648,6 +727,7 @@
   let inputClipOpen = false;
   let inputClipDuration = null;
   let inputClipThumbnail = null;
+  let inputClipTitle = null;
   let inputClipStoryboards = [];
   let inputClipPreviewStoryboard = null;
   let inputClipPreviewSource = null;
@@ -668,14 +748,12 @@
   let renderQueued = false;
   let renderFrame = 0;
   let inputClipTrackState = null;
+  let clearConfirming = false;
   const rowElements = new Map();
+  // When each row's entrance animation starts, keyed by localId. render()
+  // rebuilds row elements, so later renders resume the same animation.
+  const rowEnterAt = new Map();
   const items = [];
-
-  const inputClipResizeObserver = new ResizeObserver(() => {
-    const height = inputClipPanel.hidden ? 0 : inputClipPanel.getBoundingClientRect().height;
-    main.style.setProperty('--input-clip-height', height + 'px');
-  });
-  inputClipResizeObserver.observe(inputClipPanel);
 
   function setStatus(text, isError = false) {
     statusLine.textContent = text;
@@ -706,6 +784,7 @@
     inputClipOpen = false;
     inputClipDuration = null;
     inputClipThumbnail = null;
+    inputClipTitle = null;
     inputClipStoryboards = [];
     inputClipPreviewStoryboard = null;
     inputClipPreviewSource = null;
@@ -728,8 +807,8 @@
 
   function updateInputClipControls(hasInput) {
     const showPanel = hasInput && inputClipOpen;
-    inputClipPanel.hidden = !showPanel;
-    inputWrap.classList.toggle('input-clip-open', showPanel);
+    inputClipReveal.classList.toggle('open', showPanel);
+    clipInputButton.setAttribute('aria-expanded', String(showPanel));
     const inputClip = clipPayload({
       clipStart: inputClipStart.value,
       clipEnd: inputClipEnd.value,
@@ -740,7 +819,8 @@
     inputClipPreviewButton.disabled = !showPanel || !hasInputClipText() || !inputClip.ok;
     inputClipDownloadButton.disabled = !showPanel || !hasInput || !hasInputClipText() || !inputClip.ok || groupRunning || activeCount() >= MAX_ACTIVE_JOBS;
     setButtonIcon(inputClipPreviewButton, inputClipPreviewOpen ? 'close' : 'play');
-    inputClipPreviewButton.setAttribute('aria-label', inputClipPreviewOpen ? 'hide preview' : 'preview clip');
+    inputClipPreviewButton.setAttribute('aria-label', inputClipPreviewOpen ? 'Hide preview' : 'Preview clip');
+    inputClipPreviewButton.title = inputClipPreviewOpen ? 'Hide preview' : 'Preview clip';
     renderInputClipTrack(showPanel);
     renderInputClipPreview(showPanel);
   }
@@ -972,20 +1052,63 @@
     const hasQueuedOrCanceled = queuedCount() > 0 || restartableCount() > 0;
     const active = activeCount();
 
+    if (items.length === 0) clearConfirming = false;
+
     toggleButton(addButton, hasInput);
     toggleButton(clipInputButton, canClipInput);
     toggleButton(clearTextButton, hasInput);
-    toggleButton(cancelButton, active > 0);
-    toggleButton(clearButton, items.length > 0);
-    form.classList.toggle('has-input', hasInput);
+    toggleButton(cancelButton, active > 0 && !clearConfirming);
+    toggleButton(clearButton, items.length > 0 && !clearConfirming);
+    listHeader.hidden = items.length === 0;
+    emptyLine.hidden = items.length > 0;
+    clearConfirm.hidden = !clearConfirming;
+    if (clearConfirming) clearConfirmText.textContent = clearConfirmMessage(active);
     form.setAttribute('aria-busy', inputResolving ? 'true' : 'false');
 
     if (!canClipInput) resetInputClip();
     updateInputClipControls(canClipInput);
+    updateInputSummary(inputUrls);
 
     addButton.disabled = !hasInput || inputResolving;
     downloadButton.disabled = inputResolving || (!hasInput && !hasQueuedOrCanceled);
     downloadButton.classList.toggle('ready', !downloadButton.disabled);
+  }
+
+  function plural(count, one, many) {
+    return count + ' ' + (count === 1 ? one : many);
+  }
+
+  function clearConfirmMessage(active) {
+    const message = 'Clear ' + plural(items.length, 'item', 'items') + '?';
+    if (active === 0) return message;
+    return message + ' ' + plural(active, 'active download', 'active downloads') + ' will be canceled.';
+  }
+
+  function updateInputSummary(inputUrls) {
+    const url = inputUrls[0] || '';
+    const label = url ? sourceLabel(url) : '';
+    inputSource.hidden = !label;
+    if (label && inputSource.dataset.label !== label) {
+      const name = document.createElement('span');
+      name.className = 'source-name';
+      name.textContent = label;
+      inputSource.replaceChildren(iconForSource(sourceForUrl(url)), name);
+      inputSource.dataset.label = label;
+      inputSource.title = label;
+    }
+
+    const show = inputUrls.length === 1 &&
+      url === inputClipMetadataUrl &&
+      Boolean(inputClipTitle || inputClipThumbnail);
+    inputPreview.hidden = !show;
+    if (!show) return;
+    if (inputClipThumbnail) {
+      if (inputPreviewThumb.getAttribute('src') !== inputClipThumbnail) inputPreviewThumb.src = inputClipThumbnail;
+    } else {
+      inputPreviewThumb.removeAttribute('src');
+    }
+    inputPreviewTitle.textContent = inputClipTitle || url;
+    inputPreviewTitle.title = inputClipTitle || url;
   }
 
   function progressScale(item) {
@@ -1003,8 +1126,19 @@
     if (source === 'reddit') return 'Reddit';
     if (source === 'soundcloud') return 'SoundCloud';
     if (source === 'discord') return 'Discord';
-    if (source === 'file') return 'file';
-    return 'site';
+    if (source === 'file') return 'File';
+    return 'Link';
+  }
+
+  // Generic links show their hostname. Returns '' for text that is not a URL.
+  function sourceLabel(url) {
+    const source = sourceForUrl(url);
+    if (source !== 'generic') return sourceName(source);
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return '';
+    }
   }
 
   function matchesHost(host, root) {
@@ -1099,29 +1233,36 @@
     return value.toFixed(digits) + ' ' + units[unit];
   }
 
-  function statusText(item) {
+  function progressLabel(item) {
     const clip = Boolean(item.activeClip);
-    if (item.status === 'downloading' && typeof item.percent === 'number') {
+    if (item.status === 'downloading') {
+      if (!clip) return 'Downloading';
+      return item.clipMode === 'full' ? 'Downloading full video before cutting clip' : 'Downloading clip';
+    }
+    if (item.status === 'starting') return clip ? 'Starting clip' : 'Starting';
+    if (item.status === 'processing') return clip ? 'Cutting clip' : 'Processing';
+    if (item.status === 'saving') return clip ? 'Saving clip' : 'Saving';
+    if (item.status === 'uploading') return 'Uploading';
+    if (item.status === 'compressing') return 'Compressing';
+    return item.status;
+  }
+
+  function progressNumbers(item) {
+    if (typeof item.percent !== 'number') return '';
+    if (item.status === 'downloading') {
       const downloaded = formatBytes(item.downloadedBytes);
       const total = formatBytes(item.totalBytes);
-      const size = downloaded && total ? ' ' + downloaded + ' / ' + total : '';
-      const label = !clip
-        ? 'downloading '
-        : item.clipMode === 'full'
-          ? 'downloading full video before cutting clip '
-          : 'downloading clip ';
-      return label + item.percent.toFixed(1) + '%' + size;
+      const size = downloaded && total ? ' · ' + downloaded + ' / ' + total : '';
+      return item.percent.toFixed(1) + '%' + size;
     }
-    if (['uploading', 'compressing'].includes(item.status) && typeof item.percent === 'number') {
-      return item.status + ' ' + Math.floor(item.percent) + '%';
-    }
-    if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
-    if (!clip) return item.status;
-    if (item.status === 'starting') return 'starting clip';
-    if (item.status === 'downloading') return 'downloading clip';
-    if (item.status === 'processing') return 'cutting clip';
-    if (item.status === 'saving') return 'saving clip';
-    return item.status;
+    if (item.status === 'uploading' || item.status === 'compressing') return Math.floor(item.percent) + '%';
+    return '';
+  }
+
+  function paintProgress(state, item) {
+    const [label, numbers] = state.children;
+    label.textContent = progressLabel(item);
+    numbers.textContent = progressNumbers(item);
   }
 
   function rowClip(item) {
@@ -1131,38 +1272,53 @@
     return clip.ok ? clip.clip : null;
   }
 
-  function clipLabel(clip) {
-    return 'clip ' + formatClipTime(clip.start) + '-' + formatClipTime(clip.end) +
-      ' (' + formatClipTime(clip.end - clip.start) + ')';
-  }
-
-  function paintClipTag(tag, item) {
+  // Meta line, for example "YouTube · Clip 26:03-26:33 · 0:30 · 12 MB".
+  function paintMeta(meta, item) {
+    const parts = [item.kind === 'compress' ? sourceName('file') : sourceLabel(item.url) || sourceName('generic')];
     const clip = rowClip(item);
-    tag.hidden = !clip;
-    tag.textContent = clip ? clipLabel(clip) : '';
+    if (clip) parts.push(['Clip ', formatClipTime(clip.start) + '-' + formatClipTime(clip.end)]);
+    const length = clip ? clip.end - clip.start : item.duration;
+    if (typeof length === 'number' && Number.isFinite(length) && length > 0) parts.push(['', formatClipTime(length)]);
+    const size = formatBytes(item.totalBytes);
+    if (size) parts.push(['', size]);
+    if (item.status === 'canceled') parts.push('Canceled');
+
+    const nodes = [];
+    parts.forEach((part, index) => {
+      if (index > 0) nodes.push(' · ');
+      if (typeof part === 'string') {
+        nodes.push(part);
+        return;
+      }
+      const number = document.createElement('span');
+      number.className = 'num';
+      number.textContent = part[1];
+      nodes.push(part[0], number);
+    });
+    meta.replaceChildren(...nodes);
   }
 
   // Clip edits skip full renders to keep typing and dragging smooth.
-  function refreshClipTag(item) {
-    const tag = rowElements.get(item.localId)?.querySelector('.job-clip');
-    if (tag) paintClipTag(tag, item);
+  function refreshMeta(item) {
+    const meta = rowElements.get(item.localId)?.querySelector('.job-meta');
+    if (meta) paintMeta(meta, item);
   }
 
   function displayTitle(item) {
     if (item.title) return item.title;
-    if (item.titleLoading) return 'loading title';
+    if (item.titleLoading) return 'Loading title';
     return item.url;
   }
 
   function singleDownloadTitle(active) {
-    if (groupRunning) return 'group download active';
-    if (active >= MAX_ACTIVE_JOBS) return 'max active downloads';
-    return 'download this';
+    if (groupRunning) return 'Group download active';
+    if (active >= MAX_ACTIVE_JOBS) return 'Max active downloads';
+    return 'Download this';
   }
 
   function downloadOneLabel(item) {
-    if (item.kind === 'compress') return 'compress this file';
-    return item.format !== 'mp4' ? 'download this track' : 'download this video';
+    if (item.kind === 'compress') return 'Compress this file';
+    return item.format !== 'mp4' ? 'Download this track' : 'Download this video';
   }
 
   function canStartSingleDownload(item, active) {
@@ -1456,13 +1612,13 @@
     const startHandle = document.createElement('button');
     startHandle.type = 'button';
     startHandle.className = 'clip-handle';
-    startHandle.setAttribute('aria-label', 'clip start handle');
+    startHandle.setAttribute('aria-label', 'Clip start');
     startHandle.setAttribute('role', 'slider');
 
     const endHandle = document.createElement('button');
     endHandle.type = 'button';
     endHandle.className = 'clip-handle';
-    endHandle.setAttribute('aria-label', 'clip end handle');
+    endHandle.setAttribute('aria-label', 'Clip end');
     endHandle.setAttribute('role', 'slider');
 
     const tools = document.createElement('div');
@@ -1478,22 +1634,22 @@
     zoomOut.type = 'button';
     zoomOut.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomOut, 'minus');
-    zoomOut.title = 'zoom out';
-    zoomOut.setAttribute('aria-label', 'zoom out');
+    zoomOut.title = 'Zoom out';
+    zoomOut.setAttribute('aria-label', 'Zoom out');
 
     const zoomFit = document.createElement('button');
     zoomFit.type = 'button';
     zoomFit.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomFit, 'reset');
-    zoomFit.title = 'fit selection';
-    zoomFit.setAttribute('aria-label', 'fit selection');
+    zoomFit.title = 'Fit selection';
+    zoomFit.setAttribute('aria-label', 'Fit selection');
 
     const zoomIn = document.createElement('button');
     zoomIn.type = 'button';
     zoomIn.className = 'preview-clip clip-zoom';
     setButtonIcon(zoomIn, 'add');
-    zoomIn.title = 'zoom in';
-    zoomIn.setAttribute('aria-label', 'zoom in');
+    zoomIn.title = 'Zoom in';
+    zoomIn.setAttribute('aria-label', 'Zoom in');
 
     zoomControls.append(zoomOut, zoomFit, zoomIn);
     tools.append(note, zoomControls);
@@ -1949,7 +2105,7 @@
     startInput.dataset.clipField = 'start';
     startInput.value = item.clipStart;
     startInput.disabled = !canEditClip(item);
-    startInput.setAttribute('aria-label', 'clip start time');
+    startInput.setAttribute('aria-label', 'Clip start time');
     startInput.addEventListener('input', () => {
       item.clipStart = startInput.value;
       resetClipView(item.clipView);
@@ -1961,7 +2117,7 @@
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
-        refreshClipTag(item);
+        refreshMeta(item);
         updateControls();
       }
     });
@@ -1977,7 +2133,7 @@
     endInput.dataset.clipField = 'end';
     endInput.value = item.clipEnd;
     endInput.disabled = !canEditClip(item);
-    endInput.setAttribute('aria-label', 'clip end time');
+    endInput.setAttribute('aria-label', 'Clip end time');
     endInput.addEventListener('input', () => {
       item.clipEnd = endInput.value;
       resetClipView(item.clipView);
@@ -1989,7 +2145,7 @@
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
         scheduleRowPreviewReplay();
-        refreshClipTag(item);
+        refreshMeta(item);
         updateControls();
       }
     });
@@ -1999,8 +2155,8 @@
     clearClip.type = 'button';
     clearClip.className = 'clear-clip';
     setButtonIcon(clearClip, 'reset');
-    clearClip.setAttribute('aria-label', 'reset clip');
-    clearClip.title = 'reset clip';
+    clearClip.setAttribute('aria-label', 'Reset clip');
+    clearClip.title = 'Reset clip';
     clearClip.disabled = !canEditClip(item) || !hasClipText(item);
     clearClip.addEventListener('click', () => {
       item.clipStart = '';
@@ -2018,8 +2174,8 @@
     previewClip.type = 'button';
     previewClip.className = 'preview-clip';
     setButtonIcon(previewClip, item.clipPreviewOpen ? 'close' : 'play');
-    previewClip.setAttribute('aria-label', item.clipPreviewOpen ? 'hide preview' : 'preview clip');
-    previewClip.title = 'preview this clip';
+    previewClip.setAttribute('aria-label', item.clipPreviewOpen ? 'Hide preview' : 'Preview clip');
+    previewClip.title = 'Preview this clip';
     previewClip.disabled = !canPreviewClipNow(item);
     previewClip.addEventListener('click', () => {
       const clip = clipPayload(item);
@@ -2043,8 +2199,8 @@
     clipDownload.type = 'button';
     clipDownload.className = 'preview-clip';
     setButtonIcon(clipDownload, 'download');
-    clipDownload.setAttribute('aria-label', 'download clip');
-    clipDownload.title = 'download this clip';
+    clipDownload.setAttribute('aria-label', 'Download clip');
+    clipDownload.title = 'Download this clip';
     clipDownload.disabled = !canDownloadClipNow(item);
     clipDownload.addEventListener('click', () => {
       const clip = clipPayload(item);
@@ -2080,7 +2236,7 @@
         clearClipValidation(item);
         previewClip.disabled = !canPreviewClipNow(item);
         clipDownload.disabled = !canDownloadClipNow(item);
-        refreshClipTag(item);
+        refreshMeta(item);
         updateControls();
       },
       onChangeEnd: () => {
@@ -2122,13 +2278,138 @@
   function patchProgress(item) {
     const row = rowElements.get(item.localId);
     const fill = row?.querySelector('.bar > div');
-    const state = row?.querySelector('.job-state');
+    const state = row?.querySelector('.job-progress .job-state');
     if (!fill || !state || renderFrame || renderQueued) {
       scheduleRender();
       return;
     }
     fill.style.transform = 'scaleX(' + progressScale(item) + ')';
-    state.textContent = statusText(item);
+    paintProgress(state, item);
+  }
+
+  function rowThumb(item) {
+    const thumb = document.createElement('div');
+    thumb.className = 'job-thumb';
+    const url = safeThumbnailUrl(item.thumbnail);
+    if (url) {
+      const image = document.createElement('img');
+      image.src = url;
+      image.alt = '';
+      thumb.append(image);
+    } else {
+      thumb.append(iconForSource(item.kind === 'compress' ? 'file' : sourceForUrl(item.url)));
+    }
+    return thumb;
+  }
+
+  function rowSub(item) {
+    const sub = document.createElement('div');
+    sub.className = 'job-sub';
+    if (isActive(item) || item.status === 'saving') {
+      sub.classList.add('job-progress');
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      const fill = document.createElement('div');
+      fill.style.transform = 'scaleX(' + progressScale(item) + ')';
+      bar.append(fill);
+      const state = document.createElement('p');
+      state.className = 'job-state';
+      const numbers = document.createElement('span');
+      numbers.className = 'num';
+      state.append(document.createElement('span'), numbers);
+      paintProgress(state, item);
+      sub.append(bar, state);
+    } else if (item.status === 'failed' || item.status === 'invalid') {
+      const state = document.createElement('p');
+      state.className = 'job-state error';
+      state.textContent = item.error || (item.status === 'failed' ? 'Download failed' : 'Clip is not valid');
+      sub.append(state);
+    } else {
+      const meta = document.createElement('p');
+      meta.className = 'job-meta';
+      paintMeta(meta, item);
+      sub.append(meta);
+    }
+    return sub;
+  }
+
+  function rowControls(item, active) {
+    const controls = document.createElement('div');
+    controls.className = 'row-controls';
+
+    if (canEditClip(item)) {
+      const clipToggle = document.createElement('button');
+      clipToggle.type = 'button';
+      clipToggle.className = 'clip-toggle reveal-on-hover';
+      clipToggle.classList.toggle('active', hasClipText(item));
+      setButtonIcon(clipToggle, 'clip');
+      clipToggle.title = hasClipText(item) ? 'Edit clip' : 'Set clip';
+      clipToggle.setAttribute('aria-label', clipToggle.title);
+      clipToggle.setAttribute('aria-expanded', String(Boolean(item.clipOpen)));
+      clipToggle.addEventListener('click', () => {
+        item.clipOpen = !item.clipOpen;
+        render();
+      });
+      controls.append(clipToggle);
+    }
+
+    if (item.status === 'complete') {
+      const done = document.createElement('span');
+      done.className = 'done-mark';
+      done.setAttribute('role', 'img');
+      done.setAttribute('aria-label', 'Done');
+      done.title = 'Done';
+      setButtonIcon(done, 'check');
+      const saveAgain = document.createElement('button');
+      saveAgain.type = 'button';
+      saveAgain.className = 'text-action';
+      setButtonText(saveAgain, 'download', 'Save again');
+      saveAgain.title = 'Save the file again';
+      saveAgain.disabled = !item.jobId;
+      saveAgain.addEventListener('click', () => downloadFile(item));
+      controls.append(done, saveAgain);
+    } else if (isRetryable(item)) {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'download-one text-action';
+      setButtonText(retry, 'reset', 'Retry');
+      retry.disabled = !canStartSingleDownload(item, active);
+      retry.title = retry.disabled ? singleDownloadTitle(active) : 'Retry this download';
+      retry.addEventListener('click', () => startSingleItem(item));
+      controls.append(retry);
+    } else {
+      const downloadOne = document.createElement('button');
+      downloadOne.type = 'button';
+      downloadOne.className = 'download-one reveal-on-hover';
+      setButtonIcon(downloadOne, 'download');
+      downloadOne.title = singleDownloadTitle(active);
+      downloadOne.disabled = !canStartSingleDownload(item, active);
+      downloadOne.setAttribute('aria-label', downloadOneLabel(item));
+      downloadOne.addEventListener('click', () => startSingleItem(item));
+      controls.append(downloadOne);
+    }
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove-job reveal-on-hover';
+    setButtonIcon(remove, 'close');
+    remove.title = isActive(item) ? 'Cancel this download' : 'Remove';
+    remove.setAttribute('aria-label', isActive(item) ? 'Cancel this download' : 'Remove from list');
+    remove.addEventListener('click', () => removeItem(item));
+    controls.append(remove);
+    return controls;
+  }
+
+  // New rows in one render form a batch and stagger their entrance.
+  function markRowEntrance(row, item, now, batch) {
+    if (!rowEnterAt.has(item.localId)) {
+      rowEnterAt.set(item.localId, now + Math.min(batch.count, ROW_STAGGER_MAX_STEPS) * ROW_STAGGER_MS);
+      batch.count += 1;
+    }
+    const delay = rowEnterAt.get(item.localId) - now;
+    if (delay <= -ROW_ENTER_MS) return;
+    row.classList.add('entering');
+    row.style.animationDelay = delay + 'ms';
   }
 
   function render() {
@@ -2147,6 +2428,8 @@
       if (video) reusableVideos.set(row.dataset.localId, video);
     }
     const active = activeCount();
+    const now = performance.now();
+    const batch = { count: 0 };
     rowElements.clear();
     const nodes = items.map((item) => {
       const row = document.createElement('section');
@@ -2154,97 +2437,20 @@
       row.className = 'job';
       row.dataset.localId = String(item.localId);
       row.classList.toggle('complete', item.status === 'complete');
+      row.classList.toggle('has-action', item.status === 'complete' || isRetryable(item));
+      const clipOpen = canEditClip(item) && item.clipOpen;
+      row.classList.toggle('clip-open', clipOpen);
+      markRowEntrance(row, item, now, batch);
 
-      const top = document.createElement('div');
-      top.className = 'job-top';
+      const title = document.createElement('p');
+      title.className = 'job-url';
+      title.title = item.title || item.url;
+      title.textContent = displayTitle(item);
 
-      const title = document.createElement('div');
-      title.className = 'job-title';
-
-      const source = item.kind === 'compress' ? 'file' : sourceForUrl(item.url);
-      const icon = document.createElement('span');
-      icon.className = 'site-icon';
-      icon.setAttribute('role', 'img');
-      icon.title = sourceName(source);
-      icon.setAttribute('aria-label', sourceName(source));
-      icon.append(iconForSource(source));
-
-      const url = document.createElement('p');
-      url.className = 'job-url';
-      url.title = item.url;
-      url.textContent = displayTitle(item);
-
-      const text = document.createElement('div');
-      text.className = 'job-text';
-      text.append(url);
-      const tag = document.createElement('p');
-      tag.className = 'job-clip';
-      text.append(tag);
-      paintClipTag(tag, item);
-      title.append(icon, text);
-
-      const controls = document.createElement('div');
-      controls.className = 'row-controls';
-
-      const clipToggle = document.createElement('button');
-      clipToggle.type = 'button';
-      clipToggle.className = 'clip-toggle';
-      clipToggle.classList.toggle('active', hasClipText(item));
-      setButtonIcon(clipToggle, 'clip');
-      clipToggle.title = hasClipText(item) ? 'edit clip' : 'set clip';
-      clipToggle.disabled = !canEditClip(item);
-      clipToggle.setAttribute('aria-label', hasClipText(item) ? 'edit clip' : 'set clip');
-      clipToggle.addEventListener('click', () => {
-        item.clipOpen = !item.clipOpen;
-        render();
-      });
-
-      const downloadOne = document.createElement('button');
-      downloadOne.type = 'button';
-      downloadOne.className = 'download-one';
-      setButtonIcon(downloadOne, 'download');
-      downloadOne.title = singleDownloadTitle(active);
-      downloadOne.disabled = !canStartSingleDownload(item, active);
-      downloadOne.setAttribute('aria-label', downloadOneLabel(item));
-      downloadOne.addEventListener('click', () => startSingleItem(item));
-
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'remove-job';
-      remove.classList.toggle('cancel-active', isActive(item));
-      setButtonIcon(remove, 'close');
-      remove.title = isActive(item) ? 'cancel this download' : 'remove';
-      remove.setAttribute('aria-label', isActive(item) ? 'cancel this download' : 'remove queued item');
-      remove.addEventListener('click', () => removeItem(item));
-
-      if (canEditClip(item)) controls.append(clipToggle);
-      controls.append(downloadOne, remove);
-      top.append(title, controls);
-
-      row.append(top);
-
-      if (canEditClip(item) && item.clipOpen) {
+      row.append(rowThumb(item), title, rowSub(item), rowControls(item, active));
+      if (clipOpen) {
         row.append(renderClipPanel(item, reusableVideos.get(String(item.localId)) || null));
       }
-
-      if (item.status !== 'queued' && item.status !== 'complete') {
-        const state = document.createElement('p');
-        state.className = 'job-state';
-        state.classList.toggle('error', item.status === 'failed' || item.status === 'invalid');
-        state.textContent = statusText(item);
-
-        if (item.status === 'invalid') {
-          row.append(state);
-        } else {
-          const bar = document.createElement('div');
-          bar.className = 'bar';
-          const fill = document.createElement('div');
-          fill.style.transform = 'scaleX(' + progressScale(item) + ')';
-          bar.append(fill);
-          row.append(bar, state);
-        }
-      }
-
       return row;
     });
     jobsList.replaceChildren(...nodes);
@@ -2425,7 +2631,7 @@
     inputClipMetadataTimer = setTimeout(() => {
       inputClipMetadataTimer = null;
       void loadInputClipMetadata();
-    }, 500);
+    }, 300);
   }
 
   function scheduleInputClipPreview() {
@@ -2468,12 +2674,13 @@
   async function loadInputClipMetadata() {
     const url = firstInputUrl();
     if (!url || inputClipLoading) return;
-    if (url === inputClipMetadataUrl && (inputClipDuration !== null || inputClipThumbnail)) return;
+    if (url === inputClipMetadataUrl && (inputClipDuration !== null || inputClipThumbnail || inputClipTitle)) return;
     const token = inputClipMetadataToken + 1;
     inputClipMetadataToken = token;
     inputClipMetadataUrl = url;
     inputClipDuration = null;
     inputClipThumbnail = null;
+    inputClipTitle = null;
     inputClipStoryboards = [];
     inputClipLoading = true;
     updateInputClipControls(urlInput.value.trim().length > 0);
@@ -2491,6 +2698,7 @@
       if (token !== inputClipMetadataToken || !response.ok) return;
       inputClipDuration = clipDurationFromMetadata(data);
       inputClipThumbnail = safeThumbnailUrl(data.thumbnail) || null;
+      inputClipTitle = typeof data.title === 'string' && data.title ? data.title : null;
       inputClipStoryboards = sanitizeStoryboards(data.storyboards);
       if (data.clip && !hasInputClipText()) {
         inputClipStart.value = formatClipTime(data.clip.start);
@@ -2519,6 +2727,7 @@
     if (url === inputClipMetadataUrl) return;
     inputClipDuration = null;
     inputClipThumbnail = null;
+    inputClipTitle = null;
     inputClipStoryboards = [];
     inputClipPreviewStoryboard = null;
     inputClipPreviewSource = null;
@@ -2924,7 +3133,25 @@
     void cancelAllDownloads();
   });
 
-  clearButton.addEventListener('click', async () => {
+  clearButton.addEventListener('click', () => {
+    clearConfirming = true;
+    updateControls();
+    clearConfirmYes.focus();
+  });
+
+  clearKeep.addEventListener('click', () => {
+    clearConfirming = false;
+    updateControls();
+    clearButton.focus();
+  });
+
+  clearConfirm.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') clearKeep.click();
+  });
+
+  clearConfirmYes.addEventListener('click', async () => {
+    clearConfirming = false;
+    urlInput.focus();
     await cancelAllDownloads();
     items.length = 0;
     setStatus('');
@@ -3058,10 +3285,10 @@
     resetInputMetadataIfUrlChanged();
     populateInputClipFromUrl();
     updateControls();
-    if (inputClipOpen) {
-      scheduleInputClipMetadata();
-      scheduleInputClipPreview();
-    }
+    const urls = urlInput.value.trim().split(/\s+/).filter(Boolean);
+    const singleLink = urls.length === 1 && Boolean(sourceLabel(urls[0]));
+    if (!clipInputButton.hidden && (inputClipOpen || singleLink)) scheduleInputClipMetadata();
+    if (inputClipOpen) scheduleInputClipPreview();
   });
   render();
 </script>
