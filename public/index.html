@@ -561,7 +561,9 @@
     .job-thumb { width: 64px; }
     .job-sub { align-self: center; }
     .row-controls { margin-top: -6px; margin-bottom: -8px; }
-    .job.has-action .row-controls { justify-self: start; margin: 2px 0 -6px -10px; }
+    .job.has-action .row-controls { justify-self: start; margin: 2px 0 -6px -4px; }
+    .job-url { padding-right: 8px; }
+    .job-progress .job-state .num { margin-left: 0; }
     .row-controls button { min-width: 40px; }
     .clip-field { flex: 1; }
     .clip-field input { width: 100%; min-width: 0; font-size: 16px; }
@@ -1055,6 +1057,7 @@
     if (items.length === 0) clearConfirming = false;
 
     toggleButton(addButton, hasInput);
+    toggleButton(compressButton, !hasInput);
     toggleButton(clipInputButton, canClipInput);
     toggleButton(clearTextButton, hasInput);
     toggleButton(cancelButton, active > 0 && !clearConfirming);
