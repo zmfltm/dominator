@@ -108,7 +108,10 @@ const TWITTER_CONCURRENT_FRAGMENT_ARGS = ['--concurrent-fragments', '4'];
 // download. Below this rate yt-dlp re-extracts and resumes with a fresh URL.
 const YOUTUBE_THROTTLED_RATE_ARGS = ['--throttled-rate', '100K'];
 
-const H264_SORT_ARGS = ['-S', 'vcodec:h264,acodec:aac'];
+// Prefer H.264 video and AAC audio so saved MP4s upload directly to sites like
+// Twitter/X, which reject AV1 and VP9. Keep resolution ahead of acodec so bv*
+// does not pick a combined 360p H.264+AAC stream over a higher-res video stream.
+const H264_SORT_ARGS = ['-S', 'vcodec:h264,res,acodec:aac'];
 
 function formatArgs(request: JobRequest): string[] {
   if (request.format !== 'mp4') return FORMAT_ARGS[request.format];
