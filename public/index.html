@@ -1214,13 +1214,18 @@
     if (item.status === 'downloading' && typeof item.percent === 'number') {
       const downloaded = formatBytes(item.downloadedBytes);
       const total = formatBytes(item.totalBytes);
-      const size = downloaded && total ? ' ' + downloaded + ' / ' + total : '';
+      const size = downloaded && total ? ' · ' + downloaded + ' / ' + total : '';
+      const speed = formatBytes(item.bytesPerSecond);
+      const rate = speed ? ' · ' + speed + '/s' : '';
+      const left = Number.isFinite(item.etaSeconds) && item.percent < 100
+        ? ' · ' + formatClipTime(item.etaSeconds) + ' left'
+        : '';
       const label = !clip
         ? 'downloading '
         : item.clipMode === 'full'
           ? 'downloading full video before cutting clip '
           : 'downloading clip ';
-      return label + item.percent.toFixed(1) + '%' + size;
+      return label + item.percent.toFixed(1) + '%' + size + rate + left;
     }
     if (['uploading', 'compressing'].includes(item.status) && typeof item.percent === 'number') {
       return item.status + ' ' + Math.floor(item.percent) + '%';
@@ -2406,6 +2411,8 @@
       percent: null,
       downloadedBytes: null,
       totalBytes: null,
+      bytesPerSecond: null,
+      etaSeconds: null,
       error: null,
       jobId: null,
       activeClip: null,
@@ -2901,6 +2908,8 @@
         item.percent = progress.percent;
         item.downloadedBytes = progress.downloadedBytes;
         item.totalBytes = progress.totalBytes;
+        item.bytesPerSecond = progress.bytesPerSecond ?? null;
+        item.etaSeconds = progress.etaSeconds ?? null;
       } else if (progress.stage === 'compressing') {
         item.status = 'compressing';
         item.percent = progress.percent;
@@ -2940,6 +2949,8 @@
     item.percent = null;
     item.downloadedBytes = null;
     item.totalBytes = null;
+    item.bytesPerSecond = null;
+    item.etaSeconds = null;
     item.error = null;
     item.jobId = null;
     item.source = null;
