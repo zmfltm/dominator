@@ -6,7 +6,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { Readable } from 'node:stream';
-import { MAX_UPLOAD_BYTES } from './compress';
+import { MAX_UPLOAD_BYTES, parseCompressOptions } from './compress';
 import {
   cancelJob,
   deleteJob,
@@ -314,6 +314,14 @@ app.post('/api/compress', async (c) => {
   if (!name) {
     return c.json({ error: 'file name is required' }, 400);
   }
+  const options = parseCompressOptions({
+    quality: c.req.query('quality'),
+    resolution: c.req.query('resolution'),
+    codec: c.req.query('codec'),
+  });
+  if (!options.ok) {
+    return c.json({ error: options.error }, 400);
+  }
   if (Number(c.req.header('content-length')) > MAX_UPLOAD_BYTES) {
     return c.json({ error: new UploadError('too_large').message }, 413);
   }
@@ -322,7 +330,7 @@ app.post('/api/compress', async (c) => {
     return c.json({ error: new UploadError('empty').message }, 400);
   }
   try {
-    const job = await startCompressJob(body, name);
+    const job = await startCompressJob(body, name, MAX_UPLOAD_BYTES, options.value);
     const { signal } = c.req.raw;
     if (signal.aborted) {
       cancelJob(job.id);

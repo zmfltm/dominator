@@ -249,6 +249,16 @@ describe('POST /api/compress', () => {
     expect(blank.status).toBe(400);
   });
 
+  it('rejects invalid compress menu options', async () => {
+    const res = await app.request('/api/compress?name=a.mp4&quality=invalid', {
+      method: 'POST',
+      headers: octet,
+      body: 'x',
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('quality');
+  });
+
   it('rejects a Content-Length over the upload cap before reading', async () => {
     const res = await app.request('/api/compress?name=a.mp4', {
       method: 'POST',

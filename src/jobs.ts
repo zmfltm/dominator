@@ -10,10 +10,12 @@ import { pipeline } from 'node:stream/promises';
 import {
   buildFfmpegCompressArgs,
   compressedFileName,
+  DEFAULT_COMPRESS_OPTIONS,
   MAX_UPLOAD_BYTES,
   parseFfmpegProgressLine,
   probeMedia,
   uploadFileName,
+  type CompressOptions,
 } from './compress';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
@@ -574,6 +576,7 @@ export async function startCompressJob(
   body: ReadableStream<Uint8Array>,
   originalName: string,
   maxBytes = MAX_UPLOAD_BYTES,
+  options: CompressOptions = DEFAULT_COMPRESS_OPTIONS,
 ): Promise<Job> {
   if (isAtJobLimit(activeJobCount())) {
     throw new JobLimitError();
@@ -606,7 +609,7 @@ export async function startCompressJob(
     throw err instanceof UploadError ? err : new UploadError('aborted');
   }
 
-  void runCompress(job, inputPath, originalName);
+  void runCompress(job, inputPath, originalName, options);
   return job;
 }
 
@@ -634,7 +637,12 @@ async function saveUpload(
   if (received === 0) throw new UploadError('empty');
 }
 
-async function runCompress(job: Job, inputPath: string, originalName: string): Promise<void> {
+async function runCompress(
+  job: Job,
+  inputPath: string,
+  originalName: string,
+  options: CompressOptions,
+): Promise<void> {
   try {
     const info = await probeMedia(inputPath, (child) => {
       job.child = child;
@@ -645,7 +653,7 @@ async function runCompress(job: Job, inputPath: string, originalName: string): P
     const outputPath = join(job.dir, compressedFileName(originalName, info.kind));
     const ffmpegError = await runFfmpeg(
       job,
-      buildFfmpegCompressArgs(inputPath, outputPath, info.kind),
+      buildFfmpegCompressArgs(inputPath, outputPath, info.kind, options),
       (line) => {
         const percent = parseFfmpegProgressLine(line, info.durationSeconds);
         if (percent !== null && job.status === 'running') {

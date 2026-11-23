@@ -205,7 +205,8 @@
   #compress { color: #9bb0c8; opacity: 0.88; }
   form:focus-within #compress,
   form.has-input #compress { opacity: 0.96; }
-  #clipInput.active { color: var(--accent); opacity: 1; }
+  #clipInput.active,
+  #compress.active { color: var(--accent); opacity: 1; }
   #download {
     width: 48px;
     flex: 0 0 48px;
@@ -219,7 +220,8 @@
   }
   #download.ready .control-icon,
   .clip-toggle.active .control-icon,
-  #clipInput.active .control-icon {
+  #clipInput.active .control-icon,
+  #compress.active .control-icon {
     filter: drop-shadow(0 0 6px var(--glow));
   }
   #clearText {
@@ -394,7 +396,8 @@
     color: var(--dim);
     font-size: 12px;
   }
-  .input-clip-panel {
+  .input-clip-panel,
+  .compress-panel {
     position: absolute;
     top: calc(100% + 12px);
     left: 0;
@@ -405,10 +408,74 @@
     padding: 12px;
     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65);
   }
-  .input-wrap.input-clip-open ~ .status {
+  .compress-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .compress-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .compress-label {
+    color: var(--dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .compress-opts {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .compress-opt {
+    height: 26px;
+    padding: 0 9px;
+    border: 1px solid var(--line);
+    color: #9bb0c8;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    background: transparent;
+  }
+  .compress-opt:hover {
+    color: var(--fg);
+    border-color: var(--line-strong);
+    background: var(--muted-surface);
+  }
+  .compress-opt.active {
+    color: var(--accent);
+    border-color: var(--line-strong);
+    background: var(--accent-soft);
+  }
+  .compress-drop {
+    margin-top: 2px;
+    padding: 10px 12px;
+    border: 1px dashed var(--line-strong);
+    background: rgba(76, 205, 255, 0.03);
+    color: var(--fg);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+  }
+  .compress-drop:hover,
+  .compress-drop.dragging {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .input-wrap.input-clip-open ~ .status,
+  .input-wrap.compress-open ~ .status {
     transform: translateY(calc(var(--input-clip-height, 0px) + 10px));
   }
-  .input-wrap.input-clip-open ~ .queue {
+  .input-wrap.input-clip-open ~ .queue,
+  .input-wrap.compress-open ~ .queue {
     top: calc(100% + var(--input-clip-height, 0px) + 52px);
     max-height: max(160px, calc(50svh - var(--input-clip-height, 0px) - 108px));
   }
@@ -705,6 +772,32 @@
       <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
     </form>
     <input id="compressFile" type="file" accept="video/*,audio/*" multiple hidden tabindex="-1" aria-hidden="true">
+    <div id="compressPanel" class="compress-panel" hidden>
+      <div class="compress-row">
+        <span class="compress-label">quality</span>
+        <div class="compress-opts" role="group" aria-label="compression quality">
+          <button class="compress-opt active" type="button" data-compress-quality="same">same quality</button>
+          <button class="compress-opt" type="button" data-compress-quality="balanced">balanced</button>
+          <button class="compress-opt" type="button" data-compress-quality="small">smaller</button>
+        </div>
+      </div>
+      <div class="compress-row">
+        <span class="compress-label">resolution</span>
+        <div class="compress-opts" role="group" aria-label="compression resolution">
+          <button class="compress-opt active" type="button" data-compress-resolution="original">original</button>
+          <button class="compress-opt" type="button" data-compress-resolution="1080p">1080p</button>
+          <button class="compress-opt" type="button" data-compress-resolution="720p">720p</button>
+        </div>
+      </div>
+      <div class="compress-row">
+        <span class="compress-label">codec</span>
+        <div class="compress-opts" role="group" aria-label="compression codec">
+          <button class="compress-opt active" type="button" data-compress-codec="h264">h.264</button>
+          <button class="compress-opt" type="button" data-compress-codec="h265">h.265</button>
+        </div>
+      </div>
+      <button id="compressChoose" class="compress-drop" type="button">choose or drop video / audio</button>
+    </div>
     <div id="inputClipPanel" class="clip-panel input-clip-panel" hidden>
       <label class="clip-field">
         <span>start</span>
@@ -753,6 +846,8 @@
   const downloadButton = document.getElementById('download');
   const compressButton = document.getElementById('compress');
   const compressFileInput = document.getElementById('compressFile');
+  const compressPanel = document.getElementById('compressPanel');
+  const compressChooseButton = document.getElementById('compressChoose');
   const cancelButton = document.getElementById('cancel');
   const clearButton = document.getElementById('clear');
   const jobsList = document.getElementById('jobs');
@@ -798,6 +893,12 @@
   let inputResolving = false;
   let inputResolveToken = 0;
   let inputClipOpen = false;
+  let compressOpen = false;
+  const compressOptions = {
+    quality: 'same',
+    resolution: 'original',
+    codec: 'h264',
+  };
   let inputClipDuration = null;
   let inputClipThumbnail = null;
   let inputClipStoryboards = [];
@@ -823,11 +924,30 @@
   const rowElements = new Map();
   const items = [];
 
-  const inputClipResizeObserver = new ResizeObserver(() => {
-    const height = inputClipPanel.hidden ? 0 : inputClipPanel.getBoundingClientRect().height;
-    main.style.setProperty('--input-clip-height', height + 'px');
-  });
+  function syncFloatingPanelHeight() {
+    const clipHeight = inputClipPanel.hidden ? 0 : inputClipPanel.getBoundingClientRect().height;
+    const compressHeight = compressPanel.hidden ? 0 : compressPanel.getBoundingClientRect().height;
+    main.style.setProperty('--input-clip-height', Math.max(clipHeight, compressHeight) + 'px');
+  }
+  const inputClipResizeObserver = new ResizeObserver(syncFloatingPanelHeight);
   inputClipResizeObserver.observe(inputClipPanel);
+  inputClipResizeObserver.observe(compressPanel);
+
+  function updateCompressMenu() {
+    compressPanel.hidden = !compressOpen;
+    inputWrap.classList.toggle('compress-open', compressOpen);
+    compressButton.classList.toggle('active', compressOpen);
+    compressPanel.querySelectorAll('[data-compress-quality]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.compressQuality === compressOptions.quality);
+    });
+    compressPanel.querySelectorAll('[data-compress-resolution]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.compressResolution === compressOptions.resolution);
+    });
+    compressPanel.querySelectorAll('[data-compress-codec]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.compressCodec === compressOptions.codec);
+    });
+    syncFloatingPanelHeight();
+  }
 
   function setStatus(text, isError = false) {
     statusLine.textContent = text;
@@ -2476,6 +2596,7 @@
     const item = queueItem(file.name, 'mp4', file.name, '', '', null, false);
     item.kind = 'compress';
     item.file = file;
+    item.compressOptions = { ...compressOptions };
     return item;
   }
 
@@ -2884,7 +3005,14 @@
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
       item.upload = request;
-      request.open('POST', '/api/compress?name=' + encodeURIComponent(item.file.name));
+      const opts = item.compressOptions || compressOptions;
+      const query = new URLSearchParams({
+        name: item.file.name,
+        quality: opts.quality,
+        resolution: opts.resolution,
+        codec: opts.codec,
+      });
+      request.open('POST', '/api/compress?' + query.toString());
       request.setRequestHeader('content-type', 'application/octet-stream');
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable || item.status !== 'uploading') return;
@@ -3112,20 +3240,69 @@
     void queueInput();
   });
 
+  function startCompressFiles(fileList) {
+    const files = [...fileList];
+    if (files.length === 0) return;
+    compressOpen = false;
+    updateCompressMenu();
+    const queued = files.map(queueFile);
+    render();
+    for (const item of queued) startSingleItem(item);
+  }
+
   compressButton.addEventListener('click', () => {
+    compressOpen = !compressOpen;
+    if (compressOpen && inputClipOpen) {
+      inputClipOpen = false;
+      updateControls();
+    }
+    updateCompressMenu();
+  });
+
+  compressPanel.addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.dataset.compressQuality) {
+      compressOptions.quality = button.dataset.compressQuality;
+      updateCompressMenu();
+    } else if (button.dataset.compressResolution) {
+      compressOptions.resolution = button.dataset.compressResolution;
+      updateCompressMenu();
+    } else if (button.dataset.compressCodec) {
+      compressOptions.codec = button.dataset.compressCodec;
+      updateCompressMenu();
+    }
+  });
+
+  compressChooseButton.addEventListener('click', () => {
     compressFileInput.click();
+  });
+
+  compressChooseButton.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    compressChooseButton.classList.add('dragging');
+  });
+  compressChooseButton.addEventListener('dragleave', () => {
+    compressChooseButton.classList.remove('dragging');
+  });
+  compressChooseButton.addEventListener('drop', (event) => {
+    event.preventDefault();
+    compressChooseButton.classList.remove('dragging');
+    if (event.dataTransfer?.files?.length) startCompressFiles(event.dataTransfer.files);
   });
 
   compressFileInput.addEventListener('change', () => {
     const files = [...compressFileInput.files];
     compressFileInput.value = '';
-    const queued = files.map(queueFile);
-    render();
-    for (const item of queued) startSingleItem(item);
+    startCompressFiles(files);
   });
 
   clipInputButton.addEventListener('click', () => {
     inputClipOpen = !inputClipOpen;
+    if (inputClipOpen && compressOpen) {
+      compressOpen = false;
+      updateCompressMenu();
+    }
     if (inputClipOpen) populateInputClipFromUrl();
     updateControls();
     if (inputClipOpen) {
@@ -3243,7 +3420,18 @@
   window.addEventListener('pointerup', endClipDrag);
   window.addEventListener('pointercancel', endClipDrag);
 
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && compressOpen) {
+      compressOpen = false;
+      updateCompressMenu();
+    }
+  });
+
   urlInput.addEventListener('input', () => {
+    if (compressOpen && urlInput.value.trim().length > 0) {
+      compressOpen = false;
+      updateCompressMenu();
+    }
     resetInputMetadataIfUrlChanged();
     populateInputClipFromUrl();
     updateControls();
