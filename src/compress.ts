@@ -46,24 +46,59 @@ const VALID_QUALITIES = new Set<CompressQuality>(['same', 'balanced', 'small']);
 const VALID_RESOLUTIONS = new Set<CompressResolution>(['original', '1080p', '720p']);
 const VALID_CODECS = new Set<CompressCodec>(['h264', 'h265']);
 
+let hevcSupported = true;
+
+export function setHevcSupported(supported: boolean): void {
+  hevcSupported = supported;
+}
+
+function pickOption<T extends string>(
+  raw: string | undefined,
+  valid: ReadonlySet<T>,
+  fallback: T,
+  error: string,
+): { ok: true; value: T } | { ok: false; error: string } {
+  const candidate = (raw?.trim() || fallback) as T;
+  return valid.has(candidate) ? { ok: true, value: candidate } : { ok: false, error };
+}
+
 export function parseCompressOptions(params: {
   quality?: string;
   resolution?: string;
   codec?: string;
 }): ParseCompressOptionsResult {
-  const quality = (params.quality?.trim() || DEFAULT_COMPRESS_OPTIONS.quality) as CompressQuality;
-  if (!VALID_QUALITIES.has(quality)) {
-    return { ok: false, error: "quality must be 'same', 'balanced', or 'small'" };
+  const quality = pickOption(
+    params.quality,
+    VALID_QUALITIES,
+    DEFAULT_COMPRESS_OPTIONS.quality,
+    "quality must be 'same', 'balanced', or 'small'",
+  );
+  if (!quality.ok) return quality;
+  const resolution = pickOption(
+    params.resolution,
+    VALID_RESOLUTIONS,
+    DEFAULT_COMPRESS_OPTIONS.resolution,
+    "resolution must be 'original', '1080p', or '720p'",
+  );
+  if (!resolution.ok) return resolution;
+  const codec = pickOption(
+    params.codec,
+    VALID_CODECS,
+    DEFAULT_COMPRESS_OPTIONS.codec,
+    "codec must be 'h264' or 'h265'",
+  );
+  if (!codec.ok) return codec;
+  if (codec.value === 'h265' && !hevcSupported) {
+    return { ok: false, error: 'h.265 compression is not supported by this ffmpeg build' };
   }
-  const resolution = (params.resolution?.trim() || DEFAULT_COMPRESS_OPTIONS.resolution) as CompressResolution;
-  if (!VALID_RESOLUTIONS.has(resolution)) {
-    return { ok: false, error: "resolution must be 'original', '1080p', or '720p'" };
-  }
-  const codec = (params.codec?.trim() || DEFAULT_COMPRESS_OPTIONS.codec) as CompressCodec;
-  if (!VALID_CODECS.has(codec)) {
-    return { ok: false, error: "codec must be 'h264' or 'h265'" };
-  }
-  return { ok: true, value: { quality, resolution, codec } };
+  return {
+    ok: true,
+    value: {
+      quality: quality.value,
+      resolution: resolution.value,
+      codec: codec.value,
+    },
+  };
 }
 
 function videoScaleFilter(resolution: CompressResolution): string {
@@ -76,16 +111,9 @@ function videoScaleFilter(resolution: CompressResolution): string {
   return `scale=w='if(gt(iw,ih),-2,trunc(min(${cap},iw)/2)*2)':h='if(gt(iw,ih),trunc(min(${cap},ih)/2)*2,-2)'`;
 }
 
-const H264_CRF: Record<CompressQuality, string> = {
-  same: '20',
-  balanced: '24',
-  small: '28',
-};
-
-const H265_CRF: Record<CompressQuality, string> = {
-  same: '23',
-  balanced: '26',
-  small: '30',
+const VIDEO_CRF: Record<CompressCodec, Record<CompressQuality, string>> = {
+  h264: { same: '20', balanced: '24', small: '28' },
+  h265: { same: '23', balanced: '26', small: '30' },
 };
 
 const VIDEO_AUDIO_BITRATE: Record<CompressQuality, string> = {
@@ -109,17 +137,19 @@ function compressOutputArgs(kind: MediaKind, options: CompressOptions): string[]
   if (kind === 'audio') {
     return ['-vn', '-map', '0:a:0', '-c:a', 'libmp3lame', '-q:a', AUDIO_MP3_QUALITY[options.quality]];
   }
+  const crf = VIDEO_CRF[options.codec][options.quality];
   const videoCodecArgs = options.codec === 'h265'
     ? [
         '-c:v', 'libx265',
         '-preset', 'fast',
-        '-crf', H265_CRF[options.quality],
+        '-crf', crf,
+        '-x265-params', 'log-level=error',
         '-tag:v', 'hvc1',
       ]
     : [
         '-c:v', 'libx264',
-        '-preset', options.quality === 'same' ? 'fast' : 'veryfast',
-        '-crf', H264_CRF[options.quality],
+        '-preset', options.quality === 'same' ? 'fast' : 'medium',
+        '-crf', crf,
       ];
   return [
     '-map', '0:v:0',

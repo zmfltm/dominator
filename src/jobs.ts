@@ -20,7 +20,7 @@ import {
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseProgressLine, type ProgressEvent } from './progress';
 import { isSoundCloudUrl, isTwitterUrl, isYouTubeUrl, type JobRequest } from './validate';
-import { youtubeJsRuntimeArgs } from './ytdlp';
+import { youtubeExtractorArgs } from './ytdlp';
 
 export const TEMP_PREFIX = 'dominator-';
 
@@ -106,8 +106,6 @@ const TWITTER_MP4_FORMAT_ARGS = [
 // YouTube answers parallel HLS fragment requests with 401.
 const TWITTER_CONCURRENT_FRAGMENT_ARGS = ['--concurrent-fragments', '4'];
 
-// Prefer H.264 video and AAC audio so saved MP4s upload directly to sites like
-// Twitter/X, which reject AV1 and VP9. Without this, YouTube picks AV1 at 4K.
 // YouTube sometimes serves a stream URL capped near 100 KB/s for the whole
 // download. Chunked requests and a throttled-rate fallback keep throughput high.
 const YOUTUBE_DOWNLOAD_ARGS = ['--throttled-rate', '100K', '--http-chunk-size', '10M'];
@@ -193,17 +191,34 @@ export function shouldEmitProgress(
   return now - lastAt >= PROGRESS_INTERVAL_MS;
 }
 
+export function parseJobTitleLine(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith(TITLE_PRINT_PREFIX)) return undefined;
+  const raw = trimmed.slice(TITLE_PRINT_PREFIX.length).trim();
+  if (!raw || raw === 'NA') return undefined;
+  let value = raw;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== 'string') return undefined;
+    value = parsed;
+  } catch {
+    return undefined;
+  }
+  const title = value.trim();
+  return title && title !== 'NA' ? title : undefined;
+}
+
 export function buildYtDlpArgs(
   request: JobRequest,
   dir: string,
-  options: { sections?: boolean } = {},
+  options: { sections?: boolean; fast?: boolean } = {},
 ): string[] {
   const section = options.sections && request.clip
     ? ['--download-sections', `*${request.clip.start}-${request.clip.end}`]
     : [];
   return [
     '--ignore-config',
-    ...youtubeJsRuntimeArgs(request.url),
+    ...youtubeExtractorArgs(request.url, { fast: options.fast }),
     ...formatArgs(request),
     ...section,
     ...(isTwitterUrl(request.url) ? TWITTER_CONCURRENT_FRAGMENT_ARGS : []),
@@ -212,7 +227,8 @@ export function buildYtDlpArgs(
     '--no-playlist',
     '--no-simulate',
     '--print',
-    `before_dl:${TITLE_PRINT_PREFIX}%(title)s`,
+    `before_dl:${TITLE_PRINT_PREFIX}%(title)j`,
+    '--no-quiet',
     '--progress',
     '--newline',
     '-o',
@@ -381,7 +397,19 @@ export async function startJob(request: JobRequest): Promise<Job> {
 
   const useSections = sectionDownloads && Boolean(request.clip);
   if (request.clip) job.clipMode = useSections ? 'section' : 'full';
-  const args = buildYtDlpArgs(request, dir, { sections: useSections });
+  spawnDownload(job, request, dir, useSections, true);
+
+  return job;
+}
+
+function spawnDownload(
+  job: Job,
+  request: JobRequest,
+  dir: string,
+  useSections: boolean,
+  fastYouTube: boolean,
+): void {
+  const args = buildYtDlpArgs(request, dir, { sections: useSections, fast: fastYouTube });
   let child: ChildProcessByStdio<null, Readable, Readable>;
   try {
     child = spawn('yt-dlp', args, {
@@ -390,32 +418,33 @@ export async function startJob(request: JobRequest): Promise<Job> {
     });
   } catch (err) {
     failJob(job, `failed to start yt-dlp: ${(err as Error).message}`);
-    return job;
+    return;
   }
   job.child = child;
 
   let stderr = '';
-  child.stderr.on('data', (chunk: Buffer) => {
-    stderr = (stderr + chunk.toString()).slice(-4000);
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    stderr = (stderr + chunk).slice(-4000);
   });
 
   let pending = '';
   let lastEmitted: ProgressEvent | null = null;
   let lastEmittedAt = 0;
-  child.stdout.on('data', (chunk: Buffer) => {
-    pending += chunk.toString();
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    pending += chunk;
     const lines = pending.split('\n');
     pending = lines.pop() ?? '';
     if (job.status !== 'running') return;
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!job.title && trimmed.startsWith(TITLE_PRINT_PREFIX)) {
-        const title = trimmed.slice(TITLE_PRINT_PREFIX.length).trim();
-        if (title && title !== 'NA') {
+      if (!job.title) {
+        const title = parseJobTitleLine(line);
+        if (title) {
           job.title = title;
           job.events.emit('meta', { title });
+          continue;
         }
-        continue;
       }
       const progress = parseProgressLine(line);
       if (!progress) continue;
@@ -437,6 +466,10 @@ export async function startJob(request: JobRequest): Promise<Job> {
   child.on('close', async (code) => {
     if (job.status !== 'running') return;
     if (code !== 0) {
+      if (fastYouTube && isYouTubeUrl(request.url)) {
+        spawnDownload(job, request, dir, useSections, false);
+        return;
+      }
       failJob(job, extractError(stderr) ?? `yt-dlp exited with code ${code}`);
       return;
     }
@@ -460,8 +493,6 @@ export async function startJob(request: JobRequest): Promise<Job> {
       failJob(job, `could not prepare output: ${(err as Error).message}`);
     }
   });
-
-  return job;
 }
 
 async function findDownloadedFile(dir: string): Promise<string | undefined> {
@@ -600,14 +631,27 @@ export async function startCompressJob(
   jobs.set(job.id, job);
   startingJobs -= 1;
 
+  const uploadAbort = new AbortController();
+  const uploadTimer = setTimeout(() => uploadAbort.abort(), JOB_TIMEOUT_MS);
+  uploadTimer.unref();
+
   const inputPath = join(dir, uploadFileName(originalName));
   try {
-    await saveUpload(body, inputPath, maxBytes);
+    await saveUpload(body, inputPath, maxBytes, uploadAbort.signal);
   } catch (err) {
     jobs.delete(job.id);
     await rm(dir, { recursive: true, force: true });
     throw err instanceof UploadError ? err : new UploadError('aborted');
+  } finally {
+    clearTimeout(uploadTimer);
   }
+
+  job.deadline = setTimeout(() => {
+    if (job.status !== 'running') return;
+    const minutes = Math.round(JOB_TIMEOUT_MS / 60_000);
+    stopJob(job, 'error', `compression timed out after ${minutes} minutes`);
+  }, JOB_TIMEOUT_MS);
+  job.deadline.unref();
 
   void runCompress(job, inputPath, originalName, options);
   return job;
@@ -617,6 +661,7 @@ async function saveUpload(
   body: ReadableStream<Uint8Array>,
   inputPath: string,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   let received = 0;
   const counter = new Transform({
@@ -633,6 +678,7 @@ async function saveUpload(
     Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>),
     counter,
     createWriteStream(inputPath),
+    signal ? { signal } : {},
   );
   if (received === 0) throw new UploadError('empty');
 }
@@ -665,13 +711,16 @@ async function runCompress(
     if (ffmpegError) throw new Error(ffmpegError);
 
     const [input, output] = await Promise.all([stat(inputPath), stat(outputPath)]);
-    if (output.size >= input.size) throw new Error('compressed file was not smaller');
+    if (output.size >= input.size) {
+      throw new Error('compressed file was not smaller; try balanced, smaller, or h.265');
+    }
     await rm(inputPath, { force: true });
     if (job.status !== 'running') return;
 
     job.filePath = outputPath;
     job.status = 'done';
     job.completedAt = Date.now();
+    clearTimeout(job.deadline);
     job.events.emit('done');
   } catch (err) {
     if (job.status !== 'running') return;

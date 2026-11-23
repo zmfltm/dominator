@@ -440,11 +440,6 @@
     letter-spacing: 0.03em;
     background: transparent;
   }
-  .compress-opt:hover {
-    color: var(--fg);
-    border-color: var(--line-strong);
-    background: var(--muted-surface);
-  }
   .compress-opt.active {
     color: var(--accent);
     border-color: var(--line-strong);
@@ -464,7 +459,6 @@
     gap: 8px;
     min-height: 40px;
   }
-  .compress-drop:hover,
   .compress-drop.dragging {
     border-color: var(--accent);
     color: var(--accent);
@@ -712,13 +706,23 @@
       color: var(--error);
       background: var(--error-soft);
     }
+    .compress-opt:not(:disabled):hover {
+      color: var(--fg);
+      border-color: var(--line-strong);
+      background: var(--muted-surface);
+    }
+    .compress-drop:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
   }
   @media (pointer: coarse) {
     input { font-size: 16px; }
     .row-controls button,
     .clear-clip,
     .preview-clip,
-    .clip-zoom,
+    .compress-opt,
     .list-actions button {
       min-width: 44px;
       min-height: 44px;
@@ -737,11 +741,11 @@
       flex-basis: 100%;
       min-height: 44px;
     }
-    form button { flex: 1; padding-inline: 10px; }
-    #download { width: 48px; flex: 0 0 48px; }
+    form.has-input button { flex: 1; padding-inline: 10px; }
     .job-top { flex-direction: column; gap: 8px; }
     .row-controls { align-self: flex-end; }
-    .input-clip-panel { padding: 10px; }
+    .input-clip-panel,
+    .compress-panel { padding: 10px; }
     .clip-field { flex: 1; }
     .clip-field input { width: 100%; flex-basis: auto; min-width: 0; font-size: 16px; }
     .clear-clip { margin-left: 0; }
@@ -750,7 +754,8 @@
   @media (max-height: 600px) {
     main { position: relative; top: auto; left: auto; transform: none; margin: 148px auto 32px; }
     .queue,
-    .input-wrap.input-clip-open ~ .queue { max-height: none; padding-bottom: 32px; }
+    .input-wrap.input-clip-open ~ .queue,
+    .input-wrap.compress-open ~ .queue { max-height: none; padding-bottom: 32px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -767,8 +772,8 @@
     <form id="form">
       <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
       <button id="add" type="button" hidden disabled aria-label="add to queue" data-icon="add"></button>
-      <button id="clipInput" type="button" hidden disabled aria-label="edit clip" data-icon="clip"></button>
-      <button id="compress" type="button" title="compress file" aria-label="compress file" data-icon="compress"></button>
+      <button id="clipInput" type="button" hidden disabled aria-label="edit clip" aria-expanded="false" aria-controls="inputClipPanel" data-icon="clip"></button>
+      <button id="compress" type="button" title="compress file" aria-label="compress file" aria-expanded="false" aria-controls="compressPanel" data-icon="compress"></button>
       <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
     </form>
     <input id="compressFile" type="file" accept="video/*,audio/*" multiple hidden tabindex="-1" aria-hidden="true">
@@ -776,24 +781,24 @@
       <div class="compress-row">
         <span class="compress-label">quality</span>
         <div class="compress-opts" role="group" aria-label="compression quality">
-          <button class="compress-opt active" type="button" data-compress-quality="same">same quality</button>
-          <button class="compress-opt" type="button" data-compress-quality="balanced">balanced</button>
-          <button class="compress-opt" type="button" data-compress-quality="small">smaller</button>
+          <button class="compress-opt active" type="button" aria-pressed="true" data-compress-key="quality" data-compress-value="same">same quality</button>
+          <button class="compress-opt" type="button" aria-pressed="false" data-compress-key="quality" data-compress-value="balanced">balanced</button>
+          <button class="compress-opt" type="button" aria-pressed="false" data-compress-key="quality" data-compress-value="small">smaller</button>
         </div>
       </div>
       <div class="compress-row">
         <span class="compress-label">resolution</span>
         <div class="compress-opts" role="group" aria-label="compression resolution">
-          <button class="compress-opt active" type="button" data-compress-resolution="original">original</button>
-          <button class="compress-opt" type="button" data-compress-resolution="1080p">1080p</button>
-          <button class="compress-opt" type="button" data-compress-resolution="720p">720p</button>
+          <button class="compress-opt active" type="button" aria-pressed="true" data-compress-key="resolution" data-compress-value="original">original</button>
+          <button class="compress-opt" type="button" aria-pressed="false" data-compress-key="resolution" data-compress-value="1080p">1080p</button>
+          <button class="compress-opt" type="button" aria-pressed="false" data-compress-key="resolution" data-compress-value="720p">720p</button>
         </div>
       </div>
       <div class="compress-row">
         <span class="compress-label">codec</span>
         <div class="compress-opts" role="group" aria-label="compression codec">
-          <button class="compress-opt active" type="button" data-compress-codec="h264">h.264</button>
-          <button class="compress-opt" type="button" data-compress-codec="h265">h.265</button>
+          <button class="compress-opt active" type="button" aria-pressed="true" data-compress-key="codec" data-compress-value="h264">h.264</button>
+          <button class="compress-opt" type="button" aria-pressed="false" data-compress-key="codec" data-compress-value="h265">h.265</button>
         </div>
       </div>
       <button id="compressChoose" class="compress-drop" type="button">choose or drop video / audio</button>
@@ -937,14 +942,11 @@
     compressPanel.hidden = !compressOpen;
     inputWrap.classList.toggle('compress-open', compressOpen);
     compressButton.classList.toggle('active', compressOpen);
-    compressPanel.querySelectorAll('[data-compress-quality]').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.compressQuality === compressOptions.quality);
-    });
-    compressPanel.querySelectorAll('[data-compress-resolution]').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.compressResolution === compressOptions.resolution);
-    });
-    compressPanel.querySelectorAll('[data-compress-codec]').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.compressCodec === compressOptions.codec);
+    compressButton.setAttribute('aria-expanded', String(compressOpen));
+    compressPanel.querySelectorAll('[data-compress-key]').forEach((btn) => {
+      const selected = compressOptions[btn.dataset.compressKey] === btn.dataset.compressValue;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', String(selected));
     });
     syncFloatingPanelHeight();
   }
@@ -972,10 +974,7 @@
     return inputClipStart.value.trim().length > 0 || inputClipEnd.value.trim().length > 0;
   }
 
-  function resetInputClip() {
-    inputClipStart.value = '';
-    inputClipEnd.value = '';
-    inputClipOpen = false;
+  function resetInputClipSources() {
     inputClipDuration = null;
     inputClipThumbnail = null;
     inputClipStoryboards = [];
@@ -998,10 +997,18 @@
     inputClipPreviewReplayTimer = null;
   }
 
+  function resetInputClip() {
+    inputClipStart.value = '';
+    inputClipEnd.value = '';
+    inputClipOpen = false;
+    resetInputClipSources();
+  }
+
   function updateInputClipControls(hasInput) {
     const showPanel = hasInput && inputClipOpen;
     inputClipPanel.hidden = !showPanel;
     inputWrap.classList.toggle('input-clip-open', showPanel);
+    clipInputButton.setAttribute('aria-expanded', String(showPanel));
     const inputClip = clipPayload({
       clipStart: inputClipStart.value,
       clipEnd: inputClipEnd.value,
@@ -2473,6 +2480,10 @@
       clipToggle.setAttribute('aria-label', hasClipText(item) ? 'edit clip' : 'set clip');
       clipToggle.addEventListener('click', () => {
         item.clipOpen = !item.clipOpen;
+        if (item.clipOpen && item.duration === null && !item.metadataPromise && item.format !== 'audio') {
+          item.titleLoading = true;
+          item.metadataPromise = loadTitle(item);
+        }
         render();
       });
 
@@ -2528,17 +2539,17 @@
     updateControls();
   }
 
-  function queueItem(
+  function queueItem({
     url,
-    selectedFormat = 'mp4',
-    initialTitle = null,
+    format = 'mp4',
+    title = null,
     clipStart = '',
     clipEnd = '',
     playlist = null,
     renderNow = true,
     skipMetadata = false,
-  ) {
-    const audioOnly = selectedFormat === 'audio' || sourceForUrl(url) === 'discord';
+  }) {
+    const audioOnly = format === 'audio' || sourceForUrl(url) === 'discord';
     const linkedClip = audioOnly ? null : clipRangeFromUrl(url);
     const start = audioOnly
       ? ''
@@ -2546,14 +2557,14 @@
     const end = audioOnly
       ? ''
       : clipEnd || (linkedClip?.end !== null && linkedClip?.end !== undefined ? formatClipTime(linkedClip.end) : '');
-    const needsMetadata = !initialTitle && selectedFormat !== 'audio' && (!skipMetadata || Boolean(start || end));
+    const needsMetadata = !title && format !== 'audio' && (!skipMetadata || Boolean(start || end));
     const item = {
       localId: nextLocalId,
       kind: 'download',
       file: null,
       upload: null,
       url,
-      title: initialTitle,
+      title,
       titleLoading: needsMetadata,
       duration: null,
       thumbnail: null,
@@ -2566,7 +2577,7 @@
       clipPreviewAutoPlay: false,
       clipPreviewReplayTimer: null,
       clipView: newClipView(),
-      format: selectedFormat,
+      format,
       playlist,
       status: 'queued',
       clipStart: start,
@@ -2593,7 +2604,7 @@
   }
 
   function queueFile(file) {
-    const item = queueItem(file.name, 'mp4', file.name, '', '', null, false);
+    const item = queueItem({ url: file.name, format: 'mp4', title: file.name, renderNow: false });
     item.kind = 'compress';
     item.file = file;
     item.compressOptions = { ...compressOptions };
@@ -2639,7 +2650,9 @@
   }
 
   async function pollPreview(previewId, isCurrent) {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
+    const deadline = Date.now() + 190_000;
+    let attempt = 0;
+    while (Date.now() < deadline) {
       if (!isCurrent()) return null;
       const response = await fetch('/api/previews/' + previewId);
       let data = {};
@@ -2649,7 +2662,9 @@
       if (!response.ok) throw new Error(data.error || 'preview failed');
       if (data.status === 'done' && data.spriteUrl) return data;
       if (data.status === 'error') throw new Error(data.error || 'preview failed');
-      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      attempt += 1;
+      const delay = attempt < 12 ? 250 : 500;
+      await new Promise((resolve) => window.setTimeout(resolve, delay));
     }
     throw new Error('preview timed out');
   }
@@ -2799,34 +2814,16 @@
   function resetInputMetadataIfUrlChanged() {
     const url = firstInputUrl();
     if (url === inputClipMetadataUrl) return;
-    inputClipDuration = null;
-    inputClipThumbnail = null;
-    inputClipStoryboards = [];
-    inputClipPreviewStoryboard = null;
-    inputClipPreviewSource = null;
-    inputClipPreviewOpen = false;
-    inputClipPreviewAutoPlay = false;
-    resetClipView(inputClipView);
-    inputClipMetadataUrl = '';
-    inputClipPreviewUrl = '';
-    inputClipLoading = false;
-    inputClipPreviewLoading = false;
-    inputClipMetadataToken += 1;
-    inputClipPreviewToken += 1;
-    if (inputClipMetadataTimer) clearTimeout(inputClipMetadataTimer);
-    if (inputClipPreviewTimer) clearTimeout(inputClipPreviewTimer);
-    if (inputClipPreviewReplayTimer) clearTimeout(inputClipPreviewReplayTimer);
-    inputClipMetadataTimer = null;
-    inputClipPreviewTimer = null;
-    inputClipPreviewReplayTimer = null;
+    resetInputClipSources();
   }
 
   async function queueInput({ autoStart = false } = {}) {
-    if (inputResolving) return [];
+    if (inputResolving) return null;
     const urls = urlInput.value.trim().split(/\s+/).filter(Boolean);
     if (urls.length === 0) return [];
-    const clipStart = inputClipStart.value.trim();
-    const clipEnd = inputClipEnd.value.trim();
+    const applySharedClip = inputClipOpen || urls.length === 1;
+    const clipStart = applySharedClip ? inputClipStart.value.trim() : '';
+    const clipEnd = applySharedClip ? inputClipEnd.value.trim() : '';
     const queued = [];
     const failedUrls = [];
     const resolveToken = inputResolveToken + 1;
@@ -2843,7 +2840,14 @@
       for (const url of urls) {
         if (sourceForUrl(url) !== 'soundcloud') {
           const format = sourceForUrl(url) === 'discord' ? 'mp3' : 'mp4';
-          queued.push(queueItem(url, format, null, clipStart, clipEnd, null, false, autoStart));
+          queued.push(queueItem({
+            url,
+            format,
+            clipStart,
+            clipEnd,
+            renderNow: false,
+            skipMetadata: autoStart,
+          }));
           continue;
         }
 
@@ -2857,7 +2861,7 @@
           try {
             data = await response.json();
           } catch {}
-          if (resolveToken !== inputResolveToken) return queued;
+          if (resolveToken !== inputResolveToken) return null;
           if (!response.ok) throw new Error(data.error || 'could not load SoundCloud tracks');
           if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
             throw new Error('SoundCloud returned no tracks');
@@ -2867,17 +2871,16 @@
           data.tracks.forEach((track, index) => {
             if (!track || typeof track.url !== 'string') return;
             const playlist = count > 1 ? { index: index + 1, count } : null;
-            queued.push(queueItem(
-              track.url,
-              'audio',
-              typeof track.title === 'string' ? track.title : null,
-              '',
-              '',
+            queued.push(queueItem({
+              url: track.url,
+              format: 'audio',
+              title: typeof track.title === 'string' ? track.title : null,
               playlist,
-              false,
-            ));
+              renderNow: false,
+            }));
           });
         } catch (error) {
+          if (resolveToken !== inputResolveToken) return null;
           failedUrls.push(url);
           lastError = error instanceof Error && error.message
             ? error.message
@@ -2895,7 +2898,7 @@
         render();
       }
     }
-    return queued;
+    return resolveToken === inputResolveToken ? queued : null;
   }
 
   function downloadFile(item) {
@@ -3015,11 +3018,11 @@
       request.open('POST', '/api/compress?' + query.toString());
       request.setRequestHeader('content-type', 'application/octet-stream');
       request.upload.onprogress = (event) => {
-        if (!event.lengthComputable || item.status !== 'uploading') return;
+        if (!event.lengthComputable || item.status !== 'uploading' || item.upload !== request) return;
         const percent = (event.loaded / event.total) * 100;
         const changed = Math.floor(percent) !== Math.floor(item.percent ?? -1);
         item.percent = percent;
-        if (changed) render();
+        if (changed) patchProgress(item);
       };
       request.onload = () => {
         let data = {};
@@ -3036,6 +3039,8 @@
   }
 
   async function startCompress(item) {
+    const attempt = item.attempt;
+    const isCurrent = () => item.attempt === attempt && items.includes(item);
     item.status = 'uploading';
     item.percent = 0;
     render();
@@ -3044,19 +3049,23 @@
     try {
       data = await uploadFile(item);
     } catch (error) {
+      if (!isCurrent()) return;
       item.upload = null;
       if (item.status === 'canceled') return;
       finishItem(item, 'failed', error.message);
       return;
     }
-    item.upload = null;
-    item.jobId = data.jobId;
-    if (item.status === 'canceled') {
-      await cancelServerJob(item);
-      render();
-      if (groupRunning) runQueue();
+    if (!isCurrent() || item.status === 'canceled') {
+      if (isCurrent()) item.upload = null;
+      await cancelServerJobId(data.jobId);
+      if (isCurrent()) {
+        render();
+        if (groupRunning) runQueue();
+      }
       return;
     }
+    item.upload = null;
+    item.jobId = data.jobId;
     item.percent = null;
     followJob(item);
   }
@@ -3260,35 +3269,31 @@
   });
 
   compressPanel.addEventListener('click', (event) => {
-    const button = event.target.closest('button');
+    const button = event.target.closest('button[data-compress-key]');
     if (!button) return;
-    if (button.dataset.compressQuality) {
-      compressOptions.quality = button.dataset.compressQuality;
-      updateCompressMenu();
-    } else if (button.dataset.compressResolution) {
-      compressOptions.resolution = button.dataset.compressResolution;
-      updateCompressMenu();
-    } else if (button.dataset.compressCodec) {
-      compressOptions.codec = button.dataset.compressCodec;
-      updateCompressMenu();
-    }
+    compressOptions[button.dataset.compressKey] = button.dataset.compressValue;
+    updateCompressMenu();
   });
 
   compressChooseButton.addEventListener('click', () => {
     compressFileInput.click();
   });
 
-  compressChooseButton.addEventListener('dragover', (event) => {
-    event.preventDefault();
-    compressChooseButton.classList.add('dragging');
+  window.addEventListener('dragover', (event) => {
+    if (event.dataTransfer?.types?.includes('Files')) {
+      event.preventDefault();
+      if (compressOpen) compressChooseButton.classList.add('dragging');
+    }
   });
-  compressChooseButton.addEventListener('dragleave', () => {
-    compressChooseButton.classList.remove('dragging');
+  window.addEventListener('dragleave', (event) => {
+    if (event.relatedTarget === null) compressChooseButton.classList.remove('dragging');
   });
-  compressChooseButton.addEventListener('drop', (event) => {
-    event.preventDefault();
+  window.addEventListener('drop', (event) => {
     compressChooseButton.classList.remove('dragging');
-    if (event.dataTransfer?.files?.length) startCompressFiles(event.dataTransfer.files);
+    if (event.dataTransfer?.files?.length) {
+      event.preventDefault();
+      startCompressFiles(event.dataTransfer.files);
+    }
   });
 
   compressFileInput.addEventListener('change', () => {
@@ -3356,6 +3361,7 @@
       return;
     }
     const queued = await queueInput();
+    if (!queued) return;
     for (const item of queued) startSingleItem(item);
   });
 
@@ -3378,8 +3384,14 @@
   });
 
   async function submitAndDownload() {
-    await queueInput({ autoStart: true });
+    if (inputResolving) return;
+    const hasInput = urlInput.value.trim().length > 0;
+    const hasWork = queuedCount() > 0 || retryableCount() > 0;
+    if (!hasInput && !hasWork) return;
+    const queued = await queueInput({ autoStart: true });
+    if (queued === null) return;
     reactivateRetryableItems();
+    if (queuedCount() === 0) return;
     groupRunning = true;
     runQueue();
   }
@@ -3391,7 +3403,7 @@
 
   for (const field of [inputClipStart, inputClipEnd]) {
     field.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
+      if (event.isComposing || event.key !== 'Enter') return;
       event.preventDefault();
       inputClipDownloadButton.click();
     });
@@ -3412,7 +3424,7 @@
       return;
     }
 
-    if (event.key !== 'Enter') return;
+    if (event.isComposing || event.key !== 'Enter') return;
     event.preventDefault();
     void submitAndDownload();
   });
@@ -3424,6 +3436,7 @@
     if (event.key === 'Escape' && compressOpen) {
       compressOpen = false;
       updateCompressMenu();
+      compressButton.focus();
     }
   });
 

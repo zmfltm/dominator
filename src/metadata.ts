@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseYouTubeStoryboards, type Storyboard } from './storyboard';
 import { isYouTubeUrl } from './validate';
+import { youtubeExtractorArgs } from './ytdlp';
 
 export const METADATA_TIMEOUT_MS = 15_000;
 export const MAX_RUNNING_METADATA = 7;
@@ -34,13 +35,6 @@ export interface VideoMetadata {
     start: number;
     end: number;
   };
-}
-
-export function firstNonEmptyLine(output: string): string | undefined {
-  return output
-    .split('\n')
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
 }
 
 export function parseVideoMetadataOutput(output: string): VideoMetadata | undefined {
@@ -109,10 +103,6 @@ export function extractYtDlpError(stderr: string): string | undefined {
   return errorLines.at(-1)?.replace(/^ERROR:\s*/, '');
 }
 
-export async function fetchVideoTitle(url: string, timeoutMs = METADATA_TIMEOUT_MS): Promise<string> {
-  return (await fetchVideoMetadata(url, timeoutMs)).title;
-}
-
 export function fetchVideoMetadata(url: string, timeoutMs = METADATA_TIMEOUT_MS): Promise<VideoMetadata> {
   const cached = cachedMetadata.get(url);
   if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value);
@@ -145,7 +135,14 @@ function cacheMetadata(url: string, value: VideoMetadata): void {
 async function runLimitedMetadataLookup(url: string, timeoutMs: number): Promise<VideoMetadata> {
   await acquireMetadataSlot();
   try {
-    return await runVideoMetadata(url, timeoutMs);
+    try {
+      return await runVideoMetadata(url, timeoutMs, true);
+    } catch (err) {
+      if (isYouTubeUrl(url) && err instanceof MetadataError && !err.message.includes('timeout')) {
+        return await runVideoMetadata(url, timeoutMs, false);
+      }
+      throw err;
+    }
   } finally {
     releaseMetadataSlot();
   }
@@ -168,12 +165,20 @@ function releaseMetadataSlot(): void {
   runningMetadata -= 1;
 }
 
-export function buildMetadataYtDlpArgs(url: string): string[] {
+export function buildMetadataYtDlpArgs(
+  url: string,
+  options: { fast?: boolean } = {},
+): string[] {
+  const youtubeArgs = isYouTubeUrl(url)
+    ? options.fast === false
+      ? youtubeExtractorArgs(url, { fast: false })
+      : ['--no-js-runtimes']
+    : [];
   return [
     '--ignore-config',
-    // Title, duration, thumbnail, and storyboards do not need JS challenge
+    // Title, duration, thumbnail, and storyboards rarely need JS challenge
     // solving, so skipping the JS runtime cuts YouTube metadata latency nearly in half.
-    ...(isYouTubeUrl(url) ? ['--no-js-runtimes'] : []),
+    ...youtubeArgs,
     '--skip-download',
     '--no-playlist',
     '--no-warnings',
@@ -186,9 +191,9 @@ export function buildMetadataYtDlpArgs(url: string): string[] {
   ];
 }
 
-function runVideoMetadata(url: string, timeoutMs: number): Promise<VideoMetadata> {
+function runVideoMetadata(url: string, timeoutMs: number, fast: boolean): Promise<VideoMetadata> {
   return new Promise((resolve, reject) => {
-    const child = spawn('yt-dlp', buildMetadataYtDlpArgs(url), {
+    const child = spawn('yt-dlp', buildMetadataYtDlpArgs(url, { fast }), {
       detached: DETACH_CHILD_PROCESS,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

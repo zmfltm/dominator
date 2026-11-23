@@ -39,3 +39,35 @@ export function isCleanExit(code: number | null, signal: NodeJS.Signals | null):
   if (signal) return false;
   return code !== null && code < 128;
 }
+
+export function probeFfmpegHevc(): Promise<boolean> {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn('ffmpeg', ['-hide_banner', '-encoders'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    } catch {
+      resolve(false);
+      return;
+    }
+    let output = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      resolve(false);
+    }, PROBE_TIMEOUT_MS);
+    timer.unref();
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      output += chunk;
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code === 0 && /\blibx265\b/.test(output));
+    });
+  });
+}

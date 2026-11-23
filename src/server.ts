@@ -1,7 +1,8 @@
 import { serve } from '@hono/node-server';
 import { spawnSync } from 'node:child_process';
 import { app } from './app';
-import { probeFfmpegNetwork } from './ffmpeg';
+import { setHevcSupported } from './compress';
+import { probeFfmpegHevc, probeFfmpegNetwork } from './ffmpeg';
 import { reapStaleJobs, setSectionDownloads, sweepLeftoverDirs } from './jobs';
 import { reapStalePreviews } from './previews';
 
@@ -29,6 +30,10 @@ void probeFfmpegNetwork().then((works) => {
         "Install a distro ffmpeg (e.g. 'sudo apt install ffmpeg') for faster clips.",
     );
   }
+});
+
+void probeFfmpegHevc().then((supported) => {
+  setHevcSupported(supported);
 });
 
 const hostname = process.env.DOMINATOR_HOST ?? '127.0.0.1';

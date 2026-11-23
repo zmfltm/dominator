@@ -298,3 +298,15 @@ describe('POST /api/compress', () => {
     expect(res.status).toBe(413);
   });
 });
+
+describe('static asset cache headers', () => {
+  it('sets no-cache on the root page and does not cache missing font 404s', async () => {
+    const root = await app.request('/');
+    expect(root.status).toBe(200);
+    expect(root.headers.get('cache-control')).toBe('no-cache');
+
+    const missingFont = await app.request('/fonts/does-not-exist.woff2');
+    expect(missingFont.status).toBe(404);
+    expect(missingFont.headers.get('cache-control')).toBeNull();
+  });
+});

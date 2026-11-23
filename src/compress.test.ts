@@ -50,7 +50,9 @@ describe('buildFfmpegCompressArgs', () => {
       codec: 'h265',
     });
     expect(args[args.indexOf('-vf') + 1]).toContain('min(1080,iw)');
-    expect(args).toEqual(expect.arrayContaining(['-c:v', 'libx265', '-crf', '30', '-tag:v', 'hvc1']));
+    expect(args).toEqual(
+      expect.arrayContaining(['-c:v', 'libx265', '-crf', '30', '-x265-params', 'log-level=error', '-tag:v', 'hvc1']),
+    );
     expect(args).toEqual(expect.arrayContaining(['-b:a', '128k']));
   });
 

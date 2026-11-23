@@ -356,12 +356,17 @@ app.get('/api/jobs/:id/events', (c) => {
     return c.json({ error: 'no such job' }, 404);
   }
   return streamSSE(c, async (stream) => {
-    if (job.title) {
+    let aborted = stream.aborted;
+    stream.onAbort(() => {
+      aborted = true;
+    });
+    if (job.title && !aborted) {
       await stream.writeSSE({ event: 'meta', data: JSON.stringify({ title: job.title }) });
     }
-    if (job.lastProgress) {
+    if (job.lastProgress && !aborted) {
       await stream.writeSSE({ event: 'progress', data: JSON.stringify(job.lastProgress) });
     }
+    if (aborted || stream.aborted) return;
     if (job.status === 'done') {
       await stream.writeSSE({ event: 'done', data: 'done' });
       return;
@@ -379,11 +384,13 @@ app.get('/api/jobs/:id/events', (c) => {
 });
 
 interface SSEStream {
+  aborted?: boolean;
   writeSSE(message: { event: string; data: string }): Promise<void>;
   onAbort(cb: () => void): void;
 }
 
 function followJob(job: Job, stream: SSEStream): Promise<void> {
+  if (stream.aborted) return Promise.resolve();
   return new Promise((resolve) => {
     const onMeta = (meta: { title: string }) => {
       void stream
@@ -478,10 +485,10 @@ app.get('/api/jobs/:id/file', async (c) => {
 
 app.use('/*', async (c, next) => {
   await next();
-  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return;
+  if ((c.req.method !== 'GET' && c.req.method !== 'HEAD') || !c.res.ok) return;
   const path = c.req.path;
   if (path.startsWith('/fonts/')) {
-    c.header('Cache-Control', 'public, max-age=31536000, immutable');
+    c.header('Cache-Control', 'public, max-age=604800');
   } else if (path === '/logo.png' || path === '/logo-hd.png') {
     c.header('Cache-Control', 'public, max-age=86400');
   } else if (path === '/' || path === '/index.html') {
