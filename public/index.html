@@ -17,16 +17,16 @@
   }
   :root {
     color-scheme: dark;
-    --bg: #000000;
-    --fg: #e4ecf7;
-    --dim: #58677b;
-    --line: rgba(76, 205, 255, 0.14);
-    --line-strong: rgba(76, 205, 255, 0.36);
-    --surface: #040608;
-    --muted-surface: rgba(76, 205, 255, 0.06);
+    --bg: #090a0d;
+    --fg: #e6edf7;
+    --dim: #687990;
+    --line: rgba(76, 205, 255, 0.16);
+    --line-strong: rgba(76, 205, 255, 0.38);
+    --surface: #0f1116;
+    --muted-surface: rgba(76, 205, 255, 0.07);
     --accent: #4ccdff;
     --accent-soft: rgba(76, 205, 255, 0.1);
-    --glow: rgba(76, 205, 255, 0.58);
+    --glow: rgba(76, 205, 255, 0.6);
     --error: #f07178;
     --error-soft: rgba(240, 113, 120, 0.1);
   }
@@ -52,6 +52,27 @@
     transform: translate(-50%, -50%);
   }
 
+  @keyframes halo-breathe {
+    0%, 100% {
+      opacity: 0.58;
+      transform: translate(-50%, -50%) scale(0.9);
+    }
+    50% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.16);
+    }
+  }
+  @keyframes logo-breathe {
+    0%, 100% {
+      opacity: 0.88;
+      transform: scale(0.985);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.03);
+    }
+  }
+
   .brand {
     position: absolute;
     left: 0;
@@ -67,11 +88,13 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 220px;
-    height: 220px;
+    width: 230px;
+    height: 230px;
     transform: translate(-50%, -50%);
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(54, 198, 255, 0.22) 0%, rgba(22, 118, 255, 0.07) 44%, transparent 72%);
+    background: radial-gradient(circle, rgba(56, 202, 255, 0.28) 0%, rgba(24, 124, 255, 0.1) 44%, transparent 72%);
+    will-change: transform, opacity;
+    animation: halo-breathe 4.2s ease-in-out infinite;
     pointer-events: none;
   }
   .logo {
@@ -79,7 +102,9 @@
     z-index: 1;
     width: 108px;
     height: auto;
-    filter: drop-shadow(0 0 18px rgba(56, 196, 255, 0.34));
+    filter: drop-shadow(0 0 18px rgba(56, 196, 255, 0.42));
+    will-change: transform, opacity;
+    animation: logo-breathe 4.2s ease-in-out infinite;
   }
 
   .input-wrap { position: relative; }
@@ -155,7 +180,7 @@
     color: var(--dim);
     cursor: not-allowed;
   }
-  button:disabled .control-icon { opacity: 0.22; }
+  button:disabled .control-icon { opacity: 0.45; }
   button:not(:disabled):active { background-color: var(--muted-surface); }
   button:focus-visible,
   input:focus-visible { outline: 1px solid var(--line-strong); outline-offset: 2px; }
@@ -176,10 +201,10 @@
     white-space: nowrap;
   }
   #add,
-  #clipInput { color: var(--dim); opacity: 0.75; }
-  #compress { color: var(--dim); opacity: 0.24; }
+  #clipInput { color: #9bb0c8; opacity: 0.92; }
+  #compress { color: #9bb0c8; opacity: 0.88; }
   form:focus-within #compress,
-  form.has-input #compress { opacity: 0.48; }
+  form.has-input #compress { opacity: 0.96; }
   #clipInput.active { color: var(--accent); opacity: 1; }
   #download {
     width: 48px;
@@ -376,9 +401,9 @@
     right: 0;
     z-index: 2;
     border: 1px solid var(--line);
-    background: rgba(2, 4, 7, 0.96);
+    background: rgba(13, 15, 20, 0.96);
     padding: 12px;
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.85);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65);
   }
   .input-wrap.input-clip-open ~ .status {
     transform: translateY(calc(var(--input-clip-height, 0px) + 10px));
@@ -404,7 +429,7 @@
     width: 5.5rem;
     height: 30px;
     border: 1px solid var(--line);
-    background: #000000;
+    background: var(--bg);
     padding: 0 8px;
     color: var(--fg);
     font-size: 12px;
@@ -546,8 +571,8 @@
     z-index: 50;
     width: 240px;
     border: 1px solid var(--line-strong);
-    background: #000000;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.85), 0 0 14px rgba(76, 205, 255, 0.25);
+    background: var(--bg);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7), 0 0 14px rgba(76, 205, 255, 0.25);
     pointer-events: none;
   }
   .frame-tip-image {
@@ -661,7 +686,7 @@
     .input-wrap.input-clip-open ~ .queue { max-height: none; padding-bottom: 32px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { transition: none !important; }
+    *, *::before, *::after { transition: none !important; animation: none !important; }
   }
 </style>
 </head>
@@ -2391,6 +2416,7 @@
     clipEnd = '',
     playlist = null,
     renderNow = true,
+    skipMetadata = false,
   ) {
     const audioOnly = selectedFormat === 'audio' || sourceForUrl(url) === 'discord';
     const linkedClip = audioOnly ? null : clipRangeFromUrl(url);
@@ -2400,6 +2426,7 @@
     const end = audioOnly
       ? ''
       : clipEnd || (linkedClip?.end !== null && linkedClip?.end !== undefined ? formatClipTime(linkedClip.end) : '');
+    const needsMetadata = !initialTitle && selectedFormat !== 'audio' && (!skipMetadata || Boolean(start || end));
     const item = {
       localId: nextLocalId,
       kind: 'download',
@@ -2407,7 +2434,7 @@
       upload: null,
       url,
       title: initialTitle,
-      titleLoading: !initialTitle && selectedFormat !== 'audio',
+      titleLoading: needsMetadata,
       duration: null,
       thumbnail: null,
       storyboards: [],
@@ -2440,7 +2467,7 @@
     };
     nextLocalId += 1;
     items.push(item);
-    if (!initialTitle && selectedFormat !== 'audio') item.metadataPromise = loadTitle(item);
+    if (needsMetadata) item.metadataPromise = loadTitle(item);
     if (renderNow) render();
     return item;
   }
@@ -2501,7 +2528,7 @@
       if (!response.ok) throw new Error(data.error || 'preview failed');
       if (data.status === 'done' && data.spriteUrl) return data;
       if (data.status === 'error') throw new Error(data.error || 'preview failed');
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
     }
     throw new Error('preview timed out');
   }
@@ -2559,7 +2586,7 @@
     inputClipMetadataTimer = setTimeout(() => {
       inputClipMetadataTimer = null;
       void loadInputClipMetadata();
-    }, 500);
+    }, 250);
   }
 
   function scheduleInputClipPreview() {
@@ -2567,7 +2594,7 @@
     inputClipPreviewTimer = setTimeout(() => {
       inputClipPreviewTimer = null;
       void loadInputClipPreview();
-    }, 800);
+    }, 350);
   }
 
   async function loadInputClipPreview() {
@@ -2673,7 +2700,7 @@
     inputClipPreviewReplayTimer = null;
   }
 
-  async function queueInput() {
+  async function queueInput({ autoStart = false } = {}) {
     if (inputResolving) return [];
     const urls = urlInput.value.trim().split(/\s+/).filter(Boolean);
     if (urls.length === 0) return [];
@@ -2695,7 +2722,7 @@
       for (const url of urls) {
         if (sourceForUrl(url) !== 'soundcloud') {
           const format = sourceForUrl(url) === 'discord' ? 'mp3' : 'mp4';
-          queued.push(queueItem(url, format, null, clipStart, clipEnd, null, false));
+          queued.push(queueItem(url, format, null, clipStart, clipEnd, null, false, autoStart));
           continue;
         }
 
@@ -2912,6 +2939,18 @@
     const attempt = item.attempt;
     const isLive = () => item.source === source && item.attempt === attempt && items.includes(item);
 
+    source.addEventListener('meta', (event) => {
+      if (!isLive()) return;
+      try {
+        const meta = JSON.parse(event.data);
+        if (meta && typeof meta.title === 'string' && meta.title.trim()) {
+          item.title = meta.title.trim();
+          item.titleLoading = false;
+          scheduleRender();
+        }
+      } catch {}
+    });
+
     source.addEventListener('progress', (event) => {
       if (!isLive()) return;
       let progress;
@@ -2945,7 +2984,7 @@
       downloadFile(item);
       window.setTimeout(() => {
         if (item.attempt === attempt && item.status === 'saving') finishItem(item, 'complete');
-      }, 700);
+      }, 250);
     });
 
     source.addEventListener('failed', (event) => {
@@ -3161,13 +3200,25 @@
     urlInput.focus();
   });
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await queueInput();
+  async function submitAndDownload() {
+    await queueInput({ autoStart: true });
     reactivateRetryableItems();
     groupRunning = true;
     runQueue();
+  }
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void submitAndDownload();
   });
+
+  for (const field of [inputClipStart, inputClipEnd]) {
+    field.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      inputClipDownloadButton.click();
+    });
+  }
 
   urlInput.addEventListener('keydown', (event) => {
     if (event.key === 'Backspace' && urlInput.value.length > 0) {
@@ -3186,7 +3237,7 @@
 
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    void queueInput();
+    void submitAndDownload();
   });
 
   window.addEventListener('pointerup', endClipDrag);

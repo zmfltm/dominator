@@ -81,13 +81,13 @@ describe('parseVideoMetadataOutput', () => {
 });
 
 describe('buildMetadataYtDlpArgs', () => {
-  it('ignores user config and keeps the URL behind --', () => {
+  it('ignores user config, skips JS runtime for fast YouTube metadata, and keeps the URL behind --', () => {
     const url = 'https://youtu.be/dQw4w9WgXcQ';
     const args = buildMetadataYtDlpArgs(url);
 
     expect(args).toContain('--ignore-config');
-    expect(args).toContain('--js-runtimes');
-    expect(args).toContain(`node:${process.execPath}`);
+    expect(args).toContain('--no-js-runtimes');
+    expect(args).not.toContain('--js-runtimes');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
   });

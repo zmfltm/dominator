@@ -156,14 +156,18 @@ describe('clip args', () => {
     expect(args).not.toContain('--concurrent-fragments');
   });
 
-  it('re-extracts throttled YouTube downloads only', () => {
+  it('re-extracts throttled YouTube downloads and chunks HTTP requests', () => {
     const youtube = buildYtDlpArgs({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' }, '/tmp/dominator-test');
     expect(youtube[youtube.indexOf('--throttled-rate') + 1]).toBe('100K');
+    expect(youtube[youtube.indexOf('--http-chunk-size') + 1]).toBe('10M');
+    expect(youtube).toContain('--no-simulate');
+    expect(youtube[youtube.indexOf('--print') + 1]).toBe('before_dl:DOMINATOR_TITLE:%(title)s');
     const twitter = buildYtDlpArgs(
       { url: 'https://x.com/user/status/1349794411333394432', format: 'mp4' },
       '/tmp/dominator-test',
     );
     expect(twitter).not.toContain('--throttled-rate');
+    expect(twitter).not.toContain('--http-chunk-size');
   });
 
   it('prefers H.264 and AAC for MP4 so files upload to Twitter/X', () => {

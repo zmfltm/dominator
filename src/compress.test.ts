@@ -15,7 +15,7 @@ describe('buildFfmpegCompressArgs', () => {
       '-hide_banner', '-loglevel', 'warning', '-nostats',
       '-progress', 'pipe:1', '-y', '-i', '/tmp/in.mov', '-map',
     ]);
-    expect(args).toEqual(expect.arrayContaining(['-c:v', 'libx264', '-crf', '28', '-preset', 'medium']));
+    expect(args).toEqual(expect.arrayContaining(['-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast']));
     expect(args).toEqual(expect.arrayContaining(['-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k']));
     expect(args).toContain('0:a:0?');
     expect(args.at(-1)).toBe('/tmp/out.mp4');

@@ -348,6 +348,9 @@ app.get('/api/jobs/:id/events', (c) => {
     return c.json({ error: 'no such job' }, 404);
   }
   return streamSSE(c, async (stream) => {
+    if (job.title) {
+      await stream.writeSSE({ event: 'meta', data: JSON.stringify({ title: job.title }) });
+    }
     if (job.lastProgress) {
       await stream.writeSSE({ event: 'progress', data: JSON.stringify(job.lastProgress) });
     }
@@ -374,6 +377,11 @@ interface SSEStream {
 
 function followJob(job: Job, stream: SSEStream): Promise<void> {
   return new Promise((resolve) => {
+    const onMeta = (meta: { title: string }) => {
+      void stream
+        .writeSSE({ event: 'meta', data: JSON.stringify(meta) })
+        .catch(finish);
+    };
     const onProgress = (progress: ProgressEvent) => {
       void stream
         .writeSSE({ event: 'progress', data: JSON.stringify(progress) })
@@ -389,12 +397,14 @@ function followJob(job: Job, stream: SSEStream): Promise<void> {
       void stream.writeSSE({ event: 'canceled', data: 'job canceled' }).then(finish, finish);
     };
     function finish() {
+      job.events.off('meta', onMeta);
       job.events.off('progress', onProgress);
       job.events.off('done', onDone);
       job.events.off('failed', onFailed);
       job.events.off('canceled', onCanceled);
       resolve();
     }
+    job.events.on('meta', onMeta);
     job.events.on('progress', onProgress);
     job.events.once('done', onDone);
     job.events.once('failed', onFailed);
@@ -456,6 +466,19 @@ app.get('/api/jobs/:id/file', async (c) => {
         `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     },
   });
+});
+
+app.use('/*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return;
+  const path = c.req.path;
+  if (path.startsWith('/fonts/')) {
+    c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  } else if (path === '/logo.png' || path === '/logo-hd.png') {
+    c.header('Cache-Control', 'public, max-age=86400');
+  } else if (path === '/' || path === '/index.html') {
+    c.header('Cache-Control', 'no-cache');
+  }
 });
 
 app.use('/*', serveStatic({ root: './public' }));

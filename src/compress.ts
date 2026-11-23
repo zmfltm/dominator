@@ -37,7 +37,7 @@ const COMPRESS_PROFILES: Record<MediaKind, { extension: string; outputArgs: stri
       '-dn',
       '-vf', VIDEO_SCALE_FILTER,
       '-c:v', 'libx264',
-      '-preset', 'medium',
+      '-preset', 'veryfast',
       '-crf', '28',
       '-pix_fmt', 'yuv420p',
       '-c:a', 'aac',

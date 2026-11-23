@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseYouTubeStoryboards, type Storyboard } from './storyboard';
-import { youtubeJsRuntimeArgs } from './ytdlp';
+import { isYouTubeUrl } from './validate';
 
 export const METADATA_TIMEOUT_MS = 15_000;
 export const MAX_RUNNING_METADATA = 7;
@@ -171,7 +171,9 @@ function releaseMetadataSlot(): void {
 export function buildMetadataYtDlpArgs(url: string): string[] {
   return [
     '--ignore-config',
-    ...youtubeJsRuntimeArgs(url),
+    // Title, duration, thumbnail, and storyboards do not need JS challenge
+    // solving, so skipping the JS runtime cuts YouTube metadata latency nearly in half.
+    ...(isYouTubeUrl(url) ? ['--no-js-runtimes'] : []),
     '--skip-download',
     '--no-playlist',
     '--no-warnings',

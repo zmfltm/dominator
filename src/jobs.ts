@@ -35,7 +35,8 @@ export const DEFAULT_JOB_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 export const JOB_TIMEOUT_MS = parseJobTimeoutMs(process.env.DOMINATOR_JOB_TIMEOUT_MS);
 // yt-dlp can print several progress lines per second per job. Clients only
 // need a few updates a second, so intermediate lines are coalesced.
-export const PROGRESS_INTERVAL_MS = 250;
+export const PROGRESS_INTERVAL_MS = 120;
+const TITLE_PRINT_PREFIX = 'DOMINATOR_TITLE:';
 
 // When ffmpeg can open network URLs, clips download only the selected section.
 // Otherwise the whole video is downloaded and trimmed locally. Set at startup
@@ -74,6 +75,7 @@ export interface Job {
   // is downloaded and trimmed locally.
   clipMode?: 'section' | 'full';
   filePath?: string;
+  title?: string;
   error?: string;
   events: EventEmitter;
   lastProgress: ProgressEvent | null;
@@ -105,8 +107,8 @@ const TWITTER_CONCURRENT_FRAGMENT_ARGS = ['--concurrent-fragments', '4'];
 // Prefer H.264 video and AAC audio so saved MP4s upload directly to sites like
 // Twitter/X, which reject AV1 and VP9. Without this, YouTube picks AV1 at 4K.
 // YouTube sometimes serves a stream URL capped near 100 KB/s for the whole
-// download. Below this rate yt-dlp re-extracts and resumes with a fresh URL.
-const YOUTUBE_THROTTLED_RATE_ARGS = ['--throttled-rate', '100K'];
+// download. Chunked requests and a throttled-rate fallback keep throughput high.
+const YOUTUBE_DOWNLOAD_ARGS = ['--throttled-rate', '100K', '--http-chunk-size', '10M'];
 
 // Prefer H.264 video and AAC audio so saved MP4s upload directly to sites like
 // Twitter/X, which reject AV1 and VP9. Keep resolution ahead of acodec so bv*
@@ -203,9 +205,12 @@ export function buildYtDlpArgs(
     ...formatArgs(request),
     ...section,
     ...(isTwitterUrl(request.url) ? TWITTER_CONCURRENT_FRAGMENT_ARGS : []),
-    ...(isYouTubeUrl(request.url) ? YOUTUBE_THROTTLED_RATE_ARGS : []),
+    ...(isYouTubeUrl(request.url) ? YOUTUBE_DOWNLOAD_ARGS : []),
     ...(isSoundCloudUrl(request.url) ? ['--embed-thumbnail'] : []),
     '--no-playlist',
+    '--no-simulate',
+    '--print',
+    `before_dl:${TITLE_PRINT_PREFIX}%(title)s`,
     '--progress',
     '--newline',
     '-o',
@@ -401,6 +406,15 @@ export async function startJob(request: JobRequest): Promise<Job> {
     pending = lines.pop() ?? '';
     if (job.status !== 'running') return;
     for (const line of lines) {
+      const trimmed = line.trim();
+      if (!job.title && trimmed.startsWith(TITLE_PRINT_PREFIX)) {
+        const title = trimmed.slice(TITLE_PRINT_PREFIX.length).trim();
+        if (title && title !== 'NA') {
+          job.title = title;
+          job.events.emit('meta', { title });
+        }
+        continue;
+      }
       const progress = parseProgressLine(line);
       if (!progress) continue;
       job.lastProgress = progress;
