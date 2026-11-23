@@ -3,29 +3,64 @@ import {
   buildFfmpegCompressArgs,
   classifyProbe,
   compressedFileName,
+  DEFAULT_COMPRESS_OPTIONS,
+  parseCompressOptions,
   parseFfmpegProgressLine,
   UnsupportedMediaError,
   uploadFileName,
 } from './compress';
 
+describe('parseCompressOptions', () => {
+  it('defaults to same quality, original resolution, and h264', () => {
+    expect(parseCompressOptions({})).toEqual({
+      ok: true,
+      value: DEFAULT_COMPRESS_OPTIONS,
+    });
+  });
+
+  it('accepts valid custom options and rejects unknown values', () => {
+    expect(parseCompressOptions({ quality: 'balanced', resolution: '720p', codec: 'h265' })).toEqual({
+      ok: true,
+      value: { quality: 'balanced', resolution: '720p', codec: 'h265' },
+    });
+    expect(parseCompressOptions({ quality: 'lossless' }).ok).toBe(false);
+    expect(parseCompressOptions({ resolution: '480p' }).ok).toBe(false);
+    expect(parseCompressOptions({ codec: 'vp9' }).ok).toBe(false);
+  });
+});
+
 describe('buildFfmpegCompressArgs', () => {
-  it('re-encodes video to a capped-resolution H.264 MP4 with progress on stdout', () => {
+  it('defaults to keeping original resolution and visually transparent H.264 quality', () => {
     const args = buildFfmpegCompressArgs('/tmp/in.mov', '/tmp/out.mp4', 'video');
     expect(args.slice(0, 10)).toEqual([
       '-hide_banner', '-loglevel', 'warning', '-nostats',
       '-progress', 'pipe:1', '-y', '-i', '/tmp/in.mov', '-map',
     ]);
-    expect(args).toEqual(expect.arrayContaining(['-c:v', 'libx264', '-crf', '28', '-preset', 'medium']));
-    expect(args).toEqual(expect.arrayContaining(['-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k']));
+    expect(args[args.indexOf('-vf') + 1]).toBe("scale=w='trunc(iw/2)*2':h='trunc(ih/2)*2'");
+    expect(args).toEqual(expect.arrayContaining(['-c:v', 'libx264', '-crf', '20', '-preset', 'fast']));
+    expect(args).toEqual(expect.arrayContaining(['-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k']));
     expect(args).toContain('0:a:0?');
     expect(args.at(-1)).toBe('/tmp/out.mp4');
+  });
+
+  it('supports HEVC and resolution caps when requested', () => {
+    const args = buildFfmpegCompressArgs('/tmp/in.mov', '/tmp/out.mp4', 'video', {
+      quality: 'small',
+      resolution: '1080p',
+      codec: 'h265',
+    });
+    expect(args[args.indexOf('-vf') + 1]).toContain('min(1080,iw)');
+    expect(args).toEqual(
+      expect.arrayContaining(['-c:v', 'libx265', '-crf', '30', '-x265-params', 'log-level=error', '-tag:v', 'hvc1']),
+    );
+    expect(args).toEqual(expect.arrayContaining(['-b:a', '128k']));
   });
 
   it('extracts the first audio stream to MP3 and drops video', () => {
     const args = buildFfmpegCompressArgs('/tmp/in.wav', '/tmp/out.mp3', 'audio');
     expect(args.slice(args.indexOf('-i'))).toEqual([
       '-i', '/tmp/in.wav', '-vn', '-map', '0:a:0',
-      '-c:a', 'libmp3lame', '-q:a', '5', '/tmp/out.mp3',
+      '-c:a', 'libmp3lame', '-q:a', '2', '/tmp/out.mp3',
     ]);
   });
 });

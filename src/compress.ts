@@ -4,6 +4,21 @@ import type { Readable } from 'node:stream';
 import { DETACH_CHILD_PROCESS } from './process';
 
 export type MediaKind = 'video' | 'audio';
+export type CompressQuality = 'same' | 'balanced' | 'small';
+export type CompressResolution = 'original' | '1080p' | '720p';
+export type CompressCodec = 'h264' | 'h265';
+
+export interface CompressOptions {
+  quality: CompressQuality;
+  resolution: CompressResolution;
+  codec: CompressCodec;
+}
+
+export const DEFAULT_COMPRESS_OPTIONS: CompressOptions = {
+  quality: 'same',
+  resolution: 'original',
+  codec: 'h264',
+};
 
 export interface MediaInfo {
   kind: MediaKind;
@@ -23,38 +38,138 @@ export class UnsupportedMediaError extends Error {
   }
 }
 
-// Shorter side capped at 1080, never upscaled, both dimensions kept even for yuv420p.
-const VIDEO_SCALE_FILTER =
-  "scale=w='if(gt(iw,ih),-2,trunc(min(1080,iw)/2)*2)':h='if(gt(iw,ih),trunc(min(1080,ih)/2)*2,-2)'";
+export type ParseCompressOptionsResult =
+  | { ok: true; value: CompressOptions }
+  | { ok: false; error: string };
 
-const COMPRESS_PROFILES: Record<MediaKind, { extension: string; outputArgs: string[] }> = {
-  video: {
-    extension: 'mp4',
-    outputArgs: [
-      '-map', '0:v:0',
-      '-map', '0:a:0?',
-      '-sn',
-      '-dn',
-      '-vf', VIDEO_SCALE_FILTER,
-      '-c:v', 'libx264',
-      '-preset', 'medium',
-      '-crf', '28',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-movflags', '+faststart',
-    ],
-  },
-  audio: {
-    extension: 'mp3',
-    outputArgs: ['-vn', '-map', '0:a:0', '-c:a', 'libmp3lame', '-q:a', '5'],
-  },
+const VALID_QUALITIES = new Set<CompressQuality>(['same', 'balanced', 'small']);
+const VALID_RESOLUTIONS = new Set<CompressResolution>(['original', '1080p', '720p']);
+const VALID_CODECS = new Set<CompressCodec>(['h264', 'h265']);
+
+let hevcSupported = true;
+
+export function setHevcSupported(supported: boolean): void {
+  hevcSupported = supported;
+}
+
+function pickOption<T extends string>(
+  raw: string | undefined,
+  valid: ReadonlySet<T>,
+  fallback: T,
+  error: string,
+): { ok: true; value: T } | { ok: false; error: string } {
+  const candidate = (raw?.trim() || fallback) as T;
+  return valid.has(candidate) ? { ok: true, value: candidate } : { ok: false, error };
+}
+
+export function parseCompressOptions(params: {
+  quality?: string;
+  resolution?: string;
+  codec?: string;
+}): ParseCompressOptionsResult {
+  const quality = pickOption(
+    params.quality,
+    VALID_QUALITIES,
+    DEFAULT_COMPRESS_OPTIONS.quality,
+    "quality must be 'same', 'balanced', or 'small'",
+  );
+  if (!quality.ok) return quality;
+  const resolution = pickOption(
+    params.resolution,
+    VALID_RESOLUTIONS,
+    DEFAULT_COMPRESS_OPTIONS.resolution,
+    "resolution must be 'original', '1080p', or '720p'",
+  );
+  if (!resolution.ok) return resolution;
+  const codec = pickOption(
+    params.codec,
+    VALID_CODECS,
+    DEFAULT_COMPRESS_OPTIONS.codec,
+    "codec must be 'h264' or 'h265'",
+  );
+  if (!codec.ok) return codec;
+  if (codec.value === 'h265' && !hevcSupported) {
+    return { ok: false, error: 'h.265 compression is not supported by this ffmpeg build' };
+  }
+  return {
+    ok: true,
+    value: {
+      quality: quality.value,
+      resolution: resolution.value,
+      codec: codec.value,
+    },
+  };
+}
+
+function videoScaleFilter(resolution: CompressResolution): string {
+  if (resolution === 'original') {
+    // Keep original resolution while ensuring even dimensions for yuv420p.
+    return "scale=w='trunc(iw/2)*2':h='trunc(ih/2)*2'";
+  }
+  const cap = resolution === '720p' ? 720 : 1080;
+  // Shorter side capped, never upscaled, both dimensions kept even for yuv420p.
+  return `scale=w='if(gt(iw,ih),-2,trunc(min(${cap},iw)/2)*2)':h='if(gt(iw,ih),trunc(min(${cap},ih)/2)*2,-2)'`;
+}
+
+const VIDEO_CRF: Record<CompressCodec, Record<CompressQuality, string>> = {
+  h264: { same: '20', balanced: '24', small: '28' },
+  h265: { same: '23', balanced: '26', small: '30' },
 };
+
+const VIDEO_AUDIO_BITRATE: Record<CompressQuality, string> = {
+  same: '192k',
+  balanced: '160k',
+  small: '128k',
+};
+
+const AUDIO_MP3_QUALITY: Record<CompressQuality, string> = {
+  same: '2',
+  balanced: '4',
+  small: '5',
+};
+
+const EXTENSION_BY_KIND: Record<MediaKind, string> = {
+  video: 'mp4',
+  audio: 'mp3',
+};
+
+function compressOutputArgs(kind: MediaKind, options: CompressOptions): string[] {
+  if (kind === 'audio') {
+    return ['-vn', '-map', '0:a:0', '-c:a', 'libmp3lame', '-q:a', AUDIO_MP3_QUALITY[options.quality]];
+  }
+  const crf = VIDEO_CRF[options.codec][options.quality];
+  const videoCodecArgs = options.codec === 'h265'
+    ? [
+        '-c:v', 'libx265',
+        '-preset', 'fast',
+        '-crf', crf,
+        '-x265-params', 'log-level=error',
+        '-tag:v', 'hvc1',
+      ]
+    : [
+        '-c:v', 'libx264',
+        '-preset', options.quality === 'same' ? 'fast' : 'medium',
+        '-crf', crf,
+      ];
+  return [
+    '-map', '0:v:0',
+    '-map', '0:a:0?',
+    '-sn',
+    '-dn',
+    '-vf', videoScaleFilter(options.resolution),
+    ...videoCodecArgs,
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-b:a', VIDEO_AUDIO_BITRATE[options.quality],
+    '-movflags', '+faststart',
+  ];
+}
 
 export function buildFfmpegCompressArgs(
   inputPath: string,
   outputPath: string,
   kind: MediaKind,
+  options: CompressOptions = DEFAULT_COMPRESS_OPTIONS,
 ): string[] {
   return [
     '-hide_banner',
@@ -63,7 +178,7 @@ export function buildFfmpegCompressArgs(
     '-progress', 'pipe:1',
     '-y',
     '-i', inputPath,
-    ...COMPRESS_PROFILES[kind].outputArgs,
+    ...compressOutputArgs(kind, options),
     outputPath,
   ];
 }
@@ -85,7 +200,7 @@ function baseName(originalName: string): string {
 }
 
 export function compressedFileName(originalName: string, kind: MediaKind): string {
-  return `${baseName(originalName)}.compressed.${COMPRESS_PROFILES[kind].extension}`;
+  return `${baseName(originalName)}.compressed.${EXTENSION_BY_KIND[kind]}`;
 }
 
 export function uploadFileName(originalName: string): string {

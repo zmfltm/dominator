@@ -249,6 +249,16 @@ describe('POST /api/compress', () => {
     expect(blank.status).toBe(400);
   });
 
+  it('rejects invalid compress menu options', async () => {
+    const res = await app.request('/api/compress?name=a.mp4&quality=invalid', {
+      method: 'POST',
+      headers: octet,
+      body: 'x',
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('quality');
+  });
+
   it('rejects a Content-Length over the upload cap before reading', async () => {
     const res = await app.request('/api/compress?name=a.mp4', {
       method: 'POST',
@@ -286,5 +296,17 @@ describe('POST /api/compress', () => {
       body: JSON.stringify({ url: 'x'.repeat(20 * 1024), format: 'mp3' }),
     });
     expect(res.status).toBe(413);
+  });
+});
+
+describe('static asset cache headers', () => {
+  it('sets no-cache on the root page and does not cache missing font 404s', async () => {
+    const root = await app.request('/');
+    expect(root.status).toBe(200);
+    expect(root.headers.get('cache-control')).toBe('no-cache');
+
+    const missingFont = await app.request('/fonts/does-not-exist.woff2');
+    expect(missingFont.status).toBe(404);
+    expect(missingFont.headers.get('cache-control')).toBeNull();
   });
 });

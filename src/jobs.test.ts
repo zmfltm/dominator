@@ -11,6 +11,7 @@ import {
   isStale,
   MAX_RUNNING_JOBS,
   parseJobTimeoutMs,
+  parseJobTitleLine,
   PROGRESS_INTERVAL_MS,
   shouldEmitProgress,
   startCompressJob,
@@ -156,20 +157,33 @@ describe('clip args', () => {
     expect(args).not.toContain('--concurrent-fragments');
   });
 
-  it('re-extracts throttled YouTube downloads only', () => {
+  it('re-extracts throttled YouTube downloads and chunks HTTP requests', () => {
     const youtube = buildYtDlpArgs({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'mp4' }, '/tmp/dominator-test');
     expect(youtube[youtube.indexOf('--throttled-rate') + 1]).toBe('100K');
+    expect(youtube[youtube.indexOf('--http-chunk-size') + 1]).toBe('10M');
+    expect(youtube).toContain('--no-simulate');
+    expect(youtube).toContain('--no-quiet');
+    expect(youtube[youtube.indexOf('--print') + 1]).toBe('before_dl:DOMINATOR_TITLE:%(title)j');
     const twitter = buildYtDlpArgs(
       { url: 'https://x.com/user/status/1349794411333394432', format: 'mp4' },
       '/tmp/dominator-test',
     );
     expect(twitter).not.toContain('--throttled-rate');
+    expect(twitter).not.toContain('--http-chunk-size');
+  });
+
+  it('parses JSON-encoded title lines and ignores NA or malformed output', () => {
+    expect(parseJobTitleLine('DOMINATOR_TITLE:"Sweet Home Alabama"')).toBe('Sweet Home Alabama');
+    expect(parseJobTitleLine('DOMINATOR_TITLE:"Line 1\\nLine 2"')).toBe('Line 1\nLine 2');
+    expect(parseJobTitleLine('DOMINATOR_TITLE:"NA"')).toBeUndefined();
+    expect(parseJobTitleLine('DOMINATOR_TITLE:null')).toBeUndefined();
+    expect(parseJobTitleLine('[download] 10%')).toBeUndefined();
   });
 
   it('prefers H.264 and AAC for MP4 so files upload to Twitter/X', () => {
     for (const url of ['https://youtu.be/dQw4w9WgXcQ', 'https://x.com/user/status/1349794411333394432']) {
       const args = buildYtDlpArgs({ url, format: 'mp4' }, '/tmp/dominator-test');
-      expect(args[args.indexOf('-S') + 1]).toBe('vcodec:h264,acodec:aac');
+      expect(args[args.indexOf('-S') + 1]).toBe('vcodec:h264,res,acodec:aac');
     }
     const audio = buildYtDlpArgs({ url: 'https://soundcloud.com/artist/track', format: 'audio' }, '/tmp/dominator-test');
     expect(audio).not.toContain('-S');

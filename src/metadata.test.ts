@@ -2,19 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMetadataYtDlpArgs,
   extractYtDlpError,
-  firstNonEmptyLine,
   parseVideoMetadataOutput,
 } from './metadata';
-
-describe('firstNonEmptyLine', () => {
-  it('returns the first title-looking line', () => {
-    expect(firstNonEmptyLine('\n  Example Video  \nother')).toBe('Example Video');
-  });
-
-  it('returns undefined for blank output', () => {
-    expect(firstNonEmptyLine('\n  \n')).toBeUndefined();
-  });
-});
 
 describe('parseVideoMetadataOutput', () => {
   it('parses title, duration, clip section times, and thumbnail', () => {
@@ -81,15 +70,24 @@ describe('parseVideoMetadataOutput', () => {
 });
 
 describe('buildMetadataYtDlpArgs', () => {
-  it('ignores user config and keeps the URL behind --', () => {
+  it('ignores user config, skips JS runtime for fast YouTube metadata, and keeps the URL behind --', () => {
     const url = 'https://youtu.be/dQw4w9WgXcQ';
     const args = buildMetadataYtDlpArgs(url);
 
     expect(args).toContain('--ignore-config');
-    expect(args).toContain('--js-runtimes');
-    expect(args).toContain(`node:${process.execPath}`);
+    expect(args).toContain('--no-js-runtimes');
+    expect(args).not.toContain('--js-runtimes');
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(url);
+  });
+
+  it('supports falling back to the Node JS runtime for YouTube metadata', () => {
+    const url = 'https://youtu.be/dQw4w9WgXcQ';
+    const args = buildMetadataYtDlpArgs(url, { fast: false });
+
+    expect(args).toContain('--js-runtimes');
+    expect(args).toContain(`node:${process.execPath}`);
+    expect(args).not.toContain('--no-js-runtimes');
   });
 });
 

@@ -7,8 +7,8 @@ import type { Readable } from 'node:stream';
 import { fetchVideoMetadata } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import type { Storyboard } from './storyboard';
-import { isTwitterUrl } from './validate';
-import { youtubeJsRuntimeArgs } from './ytdlp';
+import { isTwitterUrl, isYouTubeUrl } from './validate';
+import { youtubeExtractorArgs } from './ytdlp';
 
 export const PREVIEW_TEMP_PREFIX = 'dominator-preview-';
 export const PREVIEW_TTL_MS = 60 * 60 * 1000;
@@ -39,12 +39,6 @@ export interface Preview {
   duration?: number;
   error?: string;
   completedAt?: number;
-  child?: ChildProcessByStdio<null, Readable, Readable>;
-}
-
-interface ProcessOutput {
-  stdout: string;
-  stderr: string;
 }
 
 const previews = new Map<string, Preview>();
@@ -109,10 +103,14 @@ function previewFormat(url: string): string {
   return isTwitterUrl(url) ? TWITTER_PREVIEW_FORMAT : PREVIEW_FORMAT;
 }
 
-export function buildPreviewYtDlpArgs(url: string, dir: string): string[] {
+export function buildPreviewYtDlpArgs(
+  url: string,
+  dir: string,
+  options: { fast?: boolean } = {},
+): string[] {
   return [
     '--ignore-config',
-    ...youtubeJsRuntimeArgs(url),
+    ...youtubeExtractorArgs(url, options),
     '-f',
     previewFormat(url),
     '-S',
@@ -252,13 +250,11 @@ async function generatePreview(preview: Preview): Promise<void> {
     preview.spritePath = spritePath;
     preview.status = 'done';
     preview.completedAt = Date.now();
-    preview.child = undefined;
   } catch (err) {
     if (preview.status !== 'running') return;
     preview.status = 'error';
     preview.error = (err as Error).message;
     preview.completedAt = Date.now();
-    preview.child = undefined;
     await rm(preview.dir, { recursive: true, force: true }).catch((cleanupError) => {
       console.error(`failed to clean preview ${preview.id}:`, cleanupError);
     });
@@ -289,19 +285,27 @@ async function fetchPreviewDuration(url: string): Promise<number | undefined> {
 }
 
 async function downloadPreviewVideo(preview: Preview): Promise<string> {
-  await runProcess(preview, 'yt-dlp', buildPreviewYtDlpArgs(preview.url, preview.dir), PREVIEW_TIMEOUT_MS);
+  try {
+    await runProcess('yt-dlp', buildPreviewYtDlpArgs(preview.url, preview.dir, { fast: true }), PREVIEW_TIMEOUT_MS);
+  } catch (err) {
+    if (isYouTubeUrl(preview.url) && !(err as Error).message.includes('timed out')) {
+      await runProcess('yt-dlp', buildPreviewYtDlpArgs(preview.url, preview.dir, { fast: false }), PREVIEW_TIMEOUT_MS);
+    } else {
+      throw err;
+    }
+  }
   const filePath = await findPreviewInput(preview.dir);
   if (!filePath) throw new Error('yt-dlp produced no preview video');
   return filePath;
 }
 
 async function createFilmstrip(
-  preview: Preview,
+  _preview: Preview,
   inputPath: string,
   outputPath: string,
   duration?: number,
 ): Promise<void> {
-  await runProcess(preview, 'ffmpeg', buildFilmstripFfmpegArgs(inputPath, outputPath, duration), 60_000);
+  await runProcess('ffmpeg', buildFilmstripFfmpegArgs(inputPath, outputPath, duration), 60_000);
 }
 
 async function findPreviewInput(dir: string): Promise<string | undefined> {
@@ -320,25 +324,22 @@ async function findPreviewInput(dir: string): Promise<string | undefined> {
 }
 
 function runProcess(
-  preview: Preview,
   command: string,
   args: string[],
   timeoutMs: number,
-): Promise<ProcessOutput> {
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    let child: ChildProcessByStdio<null, Readable, Readable>;
+    let child: ChildProcessByStdio<null, null, Readable>;
     try {
       child = spawn(command, args, {
         detached: DETACH_CHILD_PROCESS,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 'ignore', 'pipe'],
       });
     } catch (err) {
       reject(new Error(`failed to start ${command}: ${(err as Error).message}`));
       return;
     }
 
-    preview.child = child;
-    let stdout = '';
     let stderr = '';
     let settled = false;
     let timedOut = false;
@@ -360,12 +361,9 @@ function runProcess(
     }, timeoutMs);
     timeout.unref();
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout = (stdout + chunk.toString()).slice(-100_000);
-    });
-
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-4000);
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      stderr = (stderr + chunk).slice(-4000);
     });
 
     child.on('error', (err) => {
@@ -382,7 +380,7 @@ function runProcess(
         return;
       }
       if (code === 0) {
-        settle(() => resolve({ stdout, stderr }));
+        settle(() => resolve());
         return;
       }
       const message = extractProcessError(stderr) ?? exitMessage(command, code, signal);
