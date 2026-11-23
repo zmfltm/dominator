@@ -3386,7 +3386,7 @@
   async function submitAndDownload() {
     if (inputResolving) return;
     const hasInput = urlInput.value.trim().length > 0;
-    const hasWork = queuedCount() > 0 || retryableCount() > 0;
+    const hasWork = queuedCount() > 0 || restartableCount() > 0;
     if (!hasInput && !hasWork) return;
     const queued = await queueInput({ autoStart: true });
     if (queued === null) return;
