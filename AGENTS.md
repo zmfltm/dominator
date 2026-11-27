@@ -46,7 +46,7 @@ Manual UI smoke test: open `http://127.0.0.1:3000` after `pnpm start`.
 - Do not show a global queued-count status like `1 queued`; the rows themselves are the queue.
 - Running rows should show percent plus downloaded and total size when yt-dlp reports a total.
 - The download button is visible by default, turns active-colored when usable, and is enabled when the input has a URL or queued rows exist.
-- Pressing Enter in the input queues URLs only; clicking download starts the queue.
+- Pressing Enter in the input queues URLs and starts downloading.
 - The add button, clip button, and an outside-left borderless text clear icon are visible only while the URL input has text. Add uses a neutral color so it is distinct from download. The input-level clip button opens start/end fields, a taller draggable zoomable timeline, preview/reset/clip buttons, and a preview player for URLs queued from the current input. Links with `t`, `start`, `end`, or media fragment times should prefill clip fields when possible. Timelines should build sampled filmstrip previews when available, use fetched thumbnails as the fallback background, and gray out unselected regions.
 - Holding Backspace in the URL input or double-tapping Backspace clears all input text.
 - Each row has a wide enough x button to remove that row before it starts. Started rows disable the x button and it must not turn red on hover.
