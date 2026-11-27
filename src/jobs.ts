@@ -91,6 +91,10 @@ let startingJobs = 0;
 
 const FORMAT_ARGS: Record<JobRequest['format'], string[]> = {
   mp4: ['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b'],
+  // Highest resolution, frame rate, and bitrate the site offers (4K and up),
+  // in whatever codec it serves. yt-dlp picks the merge container (often
+  // WebM or MKV for VP9/AV1), so nothing is re-encoded.
+  original: ['-f', 'bv*+ba/b'],
   mp3: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
   audio: ['-f', 'bestaudio/best'],
 };
@@ -116,6 +120,9 @@ const YOUTUBE_DOWNLOAD_ARGS = ['--throttled-rate', '100K', '--http-chunk-size', 
 const H264_SORT_ARGS = ['-S', 'vcodec:h264,res,acodec:aac'];
 
 function formatArgs(request: JobRequest): string[] {
+  if (request.format === 'original') {
+    return isTwitterUrl(request.url) ? TWITTER_MP4_FORMAT_ARGS : FORMAT_ARGS.original;
+  }
   if (request.format !== 'mp4') return FORMAT_ARGS[request.format];
   const selector = isTwitterUrl(request.url) ? TWITTER_MP4_FORMAT_ARGS : FORMAT_ARGS.mp4;
   return [...selector, ...H264_SORT_ARGS];
@@ -143,9 +150,18 @@ export function formatClipTimestamp(seconds: number): string {
   return `${base}.${fraction}`;
 }
 
-export function clipOutputPath(inputPath: string, format: JobRequest['format']): string {
+// Original-quality clips keep the downloaded container when stream-copied.
+// A re-encoded fallback is H.264/AAC, so it goes to MP4.
+export function clipOutputPath(
+  inputPath: string,
+  format: JobRequest['format'],
+  options: { reencode?: boolean } = {},
+): string {
   const parsed = parse(inputPath);
-  return join(parsed.dir, `${parsed.name}.clip.${format}`);
+  const extension = format !== 'original'
+    ? format
+    : options.reencode ? 'mp4' : parsed.ext.slice(1) || 'mkv';
+  return join(parsed.dir, `${parsed.name}.clip.${extension}`);
 }
 
 export function buildFfmpegCopyClipArgs(
@@ -297,11 +313,11 @@ function ffmpegReencodeOutputArgs(format: JobRequest['format']): string[] {
     '-preset',
     'veryfast',
     '-crf',
-    '23',
+    format === 'original' ? '18' : '23',
     '-c:a',
     'aac',
     '-b:a',
-    '160k',
+    format === 'original' ? '256k' : '160k',
     '-movflags',
     '+faststart',
   ];
@@ -514,7 +530,7 @@ async function trimDownloadedFile(
   format: JobRequest['format'],
 ): Promise<string> {
   emitProgress(job, { stage: 'processing' });
-  const outputPath = clipOutputPath(inputPath, format);
+  let outputPath = clipOutputPath(inputPath, format);
 
   const copyError = await runFfmpeg(
     job,
@@ -523,6 +539,11 @@ async function trimDownloadedFile(
   if (job.status !== 'running') return outputPath;
 
   if (copyError) {
+    const reencodePath = clipOutputPath(inputPath, format, { reencode: true });
+    if (reencodePath !== outputPath) {
+      await rm(outputPath, { force: true });
+      outputPath = reencodePath;
+    }
     const encodeError = await runFfmpeg(
       job,
       buildFfmpegReencodeClipArgs(inputPath, outputPath, clip, format),

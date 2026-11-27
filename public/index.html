@@ -202,10 +202,14 @@
   }
   #add,
   #clipInput { color: #9bb0c8; opacity: 0.92; }
+  #quality,
   #compress { color: #9bb0c8; opacity: 0.88; }
+  form:focus-within #quality,
+  form.has-input #quality,
   form:focus-within #compress,
   form.has-input #compress { opacity: 0.96; }
   #clipInput.active,
+  #quality.active,
   #compress.active { color: var(--accent); opacity: 1; }
   #download {
     width: 48px;
@@ -221,6 +225,7 @@
   #download.ready .control-icon,
   .clip-toggle.active .control-icon,
   #clipInput.active .control-icon,
+  #quality.active .control-icon,
   #compress.active .control-icon {
     filter: drop-shadow(0 0 6px var(--glow));
   }
@@ -693,7 +698,8 @@
       opacity: 1;
       background: transparent;
     }
-    #clipInput.active:not(:disabled):hover { color: var(--accent); }
+    #clipInput.active:not(:disabled):hover,
+    #quality.active:not(:disabled):hover { color: var(--accent); }
     #download.ready:hover {
       background: transparent;
       color: #8ae2ff;
@@ -773,6 +779,7 @@
       <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
       <button id="add" type="button" hidden disabled aria-label="add to queue" data-icon="add"></button>
       <button id="clipInput" type="button" hidden disabled aria-label="edit clip" aria-expanded="false" aria-controls="inputClipPanel" data-icon="clip"></button>
+      <button id="quality" type="button" title="original quality (up to 4K)" aria-label="original quality, up to 4K" aria-pressed="false" data-icon="quality"></button>
       <button id="compress" type="button" title="compress file" aria-label="compress file" aria-expanded="false" aria-controls="compressPanel" data-icon="compress"></button>
       <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
     </form>
@@ -849,6 +856,7 @@
   const inputClipPreviewPanel = document.getElementById('inputClipPreviewPanel');
   const clearTextButton = document.getElementById('clearText');
   const downloadButton = document.getElementById('download');
+  const qualityButton = document.getElementById('quality');
   const compressButton = document.getElementById('compress');
   const compressFileInput = document.getElementById('compressFile');
   const compressPanel = document.getElementById('compressPanel');
@@ -864,6 +872,7 @@
     minus: 'M4 10h12',
     download: 'M10 3v9 M6 8l4 4 4-4 M4 13v4h12v-4',
     compress: 'M3 3l5 5 M4 8h4V4 M17 17l-5-5 M16 12h-4v4',
+    quality: 'M3 5v6h5 M7 5v10 M11 5v10 M17 5l-6 5 6 5',
     clip: 'M3 3h4v4H3z M3 13h4v4H3z M7 7l10 10 M7 13 17 3',
     reset: 'M4 8V4 M4 8h4 M4 8l4-4h5l4 4v5l-4 4H7l-3-3',
     play: 'M6 3l10 7-10 7z',
@@ -899,6 +908,11 @@
   let inputResolveToken = 0;
   let inputClipOpen = false;
   let compressOpen = false;
+  const QUALITY_STORAGE_KEY = 'dominator.originalQuality';
+  let originalQuality = false;
+  try {
+    originalQuality = localStorage.getItem(QUALITY_STORAGE_KEY) === '1';
+  } catch {}
   const compressOptions = {
     quality: 'same',
     resolution: 'original',
@@ -949,6 +963,19 @@
       btn.setAttribute('aria-pressed', String(selected));
     });
     syncFloatingPanelHeight();
+  }
+
+  function videoFormat() {
+    return originalQuality ? 'original' : 'mp4';
+  }
+
+  function isVideoDownload(item) {
+    return item.kind === 'download' && (item.format === 'mp4' || item.format === 'original');
+  }
+
+  function updateQualityButton() {
+    qualityButton.classList.toggle('active', originalQuality);
+    qualityButton.setAttribute('aria-pressed', String(originalQuality));
   }
 
   function setStatus(text, isError = false) {
@@ -1422,8 +1449,11 @@
 
   function paintClipTag(tag, item) {
     const clip = rowClip(item);
-    tag.hidden = !clip;
-    tag.textContent = clip ? clipLabel(clip) : '';
+    const parts = [];
+    if (item.kind === 'download' && item.format === 'original') parts.push('original quality');
+    if (clip) parts.push(clipLabel(clip));
+    tag.hidden = parts.length === 0;
+    tag.textContent = parts.join(' · ');
   }
 
   // Clip edits skip full renders to keep typing and dragging smooth.
@@ -1446,7 +1476,7 @@
 
   function downloadOneLabel(item) {
     if (item.kind === 'compress') return 'compress this file';
-    return item.format !== 'mp4' ? 'download this track' : 'download this video';
+    return isVideoDownload(item) ? 'download this video' : 'download this track';
   }
 
   function canStartSingleDownload(item, active) {
@@ -2839,7 +2869,7 @@
     try {
       for (const url of urls) {
         if (sourceForUrl(url) !== 'soundcloud') {
-          const format = sourceForUrl(url) === 'discord' ? 'mp3' : 'mp4';
+          const format = sourceForUrl(url) === 'discord' ? 'mp3' : videoFormat();
           queued.push(queueItem({
             url,
             format,
@@ -3259,6 +3289,20 @@
     for (const item of queued) startSingleItem(item);
   }
 
+  qualityButton.addEventListener('click', () => {
+    originalQuality = !originalQuality;
+    try {
+      localStorage.setItem(QUALITY_STORAGE_KEY, originalQuality ? '1' : '0');
+    } catch {}
+    for (const item of items) {
+      if (isVideoDownload(item) && ['queued', 'canceled', 'invalid', 'failed'].includes(item.status)) {
+        item.format = videoFormat();
+      }
+    }
+    updateQualityButton();
+    render();
+  });
+
   compressButton.addEventListener('click', () => {
     compressOpen = !compressOpen;
     if (compressOpen && inputClipOpen) {
@@ -3453,6 +3497,7 @@
       scheduleInputClipPreview();
     }
   });
+  updateQualityButton();
   render();
 </script>
 </body>

@@ -25,6 +25,7 @@ docker compose up -d --build
 
 - Paste links and press Enter to queue them. Click download to start.
 - Use clip to select part of a video.
+- Videos save as H.264 MP4 by default (up to 1080p on YouTube). Turn on the 4K button for original quality: the highest resolution and frame rate the site offers, in its own codec (often AV1 or VP9 in WebM or MKV), with no re-encode. The setting is remembered and applies to rows that have not started yet.
 - Click compress to pick local video or audio files. They upload, shrink with ffmpeg (video to MP4, audio to MP3), and download back. Needs ffprobe, which ships with ffmpeg.
 - SoundCloud playlists save as individual tracks in their original audio format.
 - For Discord, paste the attachment link, not the message link. Audio saves as MP3. Copy a fresh link if it expires.

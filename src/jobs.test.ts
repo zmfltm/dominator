@@ -276,6 +276,36 @@ describe('clip args', () => {
       '/tmp/dominator-test/source.clip.mp3',
     );
   });
+
+  it('keeps the source container for original-quality clips', () => {
+    expect(clipOutputPath('/tmp/dominator-test/source.webm', 'original')).toBe(
+      '/tmp/dominator-test/source.clip.webm',
+    );
+    expect(clipOutputPath('/tmp/dominator-test/source.webm', 'original', { reencode: true })).toBe(
+      '/tmp/dominator-test/source.clip.mp4',
+    );
+  });
+
+  it('selects the best streams in any codec for original quality', () => {
+    const args = buildYtDlpArgs(
+      { url: 'https://youtu.be/dQw4w9WgXcQ', format: 'original' },
+      '/tmp/dominator-test',
+    );
+
+    expect(args[args.indexOf('-f') + 1]).toBe('bv*+ba/b');
+    expect(args).not.toContain('-S');
+    expect(args).not.toContain('--merge-output-format');
+  });
+
+  it('keeps the HLS preference for original-quality Twitter/X downloads', () => {
+    const args = buildYtDlpArgs(
+      { url: 'https://x.com/user/status/1349794411333394432', format: 'original' },
+      '/tmp/dominator-test',
+    );
+
+    expect(args[args.indexOf('-f') + 1].startsWith('bv*[ext=mp4][protocol^=m3u8]')).toBe(true);
+    expect(args).not.toContain('-S');
+  });
 });
 
 describe('startCompressJob upload limits', () => {

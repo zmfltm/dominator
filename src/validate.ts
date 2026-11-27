@@ -52,7 +52,7 @@ const SOUNDCLOUD_HOSTS = new Set([
   'api-v2.soundcloud.com',
 ]);
 
-export type Format = 'mp4' | 'mp3' | 'audio';
+export type Format = 'mp4' | 'original' | 'mp3' | 'audio';
 
 export const MAX_CLIP_SECONDS = 24 * 60 * 60;
 export const MAX_PLAYLIST_TRACKS = 500;
@@ -83,8 +83,8 @@ export function parseJobRequest(body: unknown): ParseResult {
     return { ok: false, error: 'request body must be a JSON object' };
   }
   const { url, format, clip, playlist } = body as Record<string, unknown>;
-  if (format !== 'mp4' && format !== 'mp3' && format !== 'audio') {
-    return { ok: false, error: "format must be 'mp4', 'mp3', or 'audio'" };
+  if (format !== 'mp4' && format !== 'original' && format !== 'mp3' && format !== 'audio') {
+    return { ok: false, error: "format must be 'mp4', 'original', 'mp3', or 'audio'" };
   }
   const parsedClip = parseClipRange(clip);
   if (!parsedClip.ok) {
