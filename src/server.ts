@@ -3,8 +3,16 @@ import { spawnSync } from 'node:child_process';
 import { app } from './app';
 import { setHevcSupported } from './compress';
 import { probeFfmpegHevc, probeFfmpegNetwork } from './ffmpeg';
-import { reapStaleJobs, setSectionDownloads, stopAllJobs, sweepLeftoverDirs } from './jobs';
+import {
+  reapStaleJobs,
+  setSectionDownloads,
+  setStartupSweep,
+  stopAllJobs,
+  sweepLeftoverDirs,
+} from './jobs';
+import { stopAllMetadata } from './metadata';
 import { reapStalePreviews, stopAllPreviews } from './previews';
+import { stopAllSoundCloud } from './soundcloud';
 
 function checkBinary(name: string, versionArgs: string[]): void {
   const result = spawnSync(name, versionArgs, { stdio: 'ignore' });
@@ -51,15 +59,21 @@ setInterval(() => {
   reapStalePreviews().catch((err) => console.error('stale preview reap failed:', err));
 }, REAP_INTERVAL_MS).unref();
 
-// Finish the sweep before accepting connections so it cannot delete the temp
-// dir of a job that an early request just started.
-try {
-  await sweepLeftoverDirs();
-} catch (err) {
-  console.error('startup temp sweep failed:', err);
-}
+// Gate temp dir creation until the post-bind sweep finishes, while binding
+// first so a second instance cannot erase the running instance's temp files.
+let resolveStartupSweep!: () => void;
+setStartupSweep(new Promise<void>((resolve) => {
+  resolveStartupSweep = resolve;
+}));
 
-const server = serve({ fetch: app.fetch, hostname, port: 3000 }, (info) => {
+const server = serve({ fetch: app.fetch, hostname, port: 3000 }, async (info) => {
+  try {
+    await sweepLeftoverDirs();
+  } catch (err) {
+    console.error('startup temp sweep failed:', err);
+  } finally {
+    resolveStartupSweep();
+  }
   console.log(
     `dominator ready: http://127.0.0.1:${info.port} (listening on ${hostname})`,
   );
@@ -75,7 +89,12 @@ function shutdown(signal: NodeJS.Signals): void {
   shuttingDown = true;
   console.log(`${signal} received, stopping downloads`);
   server.close();
-  void Promise.allSettled([stopAllJobs(), stopAllPreviews()]).then(() => process.exit(0));
+  void Promise.allSettled([
+    stopAllJobs(),
+    stopAllPreviews(),
+    stopAllMetadata(),
+    stopAllSoundCloud(),
+  ]).then(() => process.exit(0));
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

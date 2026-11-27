@@ -102,6 +102,20 @@ describe('createProgressTracker', () => {
     expect(percents.at(-1)).toBe(100);
   });
 
+  it('does not inflate totals when an HLS estimated size ticks percent down mid-stream', () => {
+    const track = createProgressTracker();
+    const first = track('[download]  50.0% of ~ 10.00MiB at 1.00MiB/s ETA 00:05');
+    const revised = track('[download]  45.0% of ~ 12.00MiB at 1.00MiB/s ETA 00:06');
+    expect(first).toMatchObject({ stage: 'downloading', percent: 50, totalBytes: 10_485_760 });
+    expect(revised).toMatchObject({ stage: 'downloading', percent: 50, totalBytes: 12_582_912 });
+  });
+
+  it('keeps percent monotonic even when totalBytes is unknown', () => {
+    const track = createProgressTracker();
+    expect(track('[download]  80.0% of Unknown B')).toMatchObject({ stage: 'downloading', percent: 80 });
+    expect(track('[download]  10.0% of Unknown B')).toMatchObject({ stage: 'downloading', percent: 80 });
+  });
+
   it('passes processing events through', () => {
     expect(createProgressTracker()('[Merger] Merging formats into "x.mkv"')).toEqual({
       stage: 'processing',

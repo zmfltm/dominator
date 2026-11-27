@@ -94,10 +94,15 @@ export function createProgressTracker(): (line: string) => ProgressEvent | null 
     }
     const event = parseProgressLine(line);
     if (!event || event.stage !== 'downloading') return event;
-    // Percent resetting without a Destination line also marks a new stream.
-    if (last && event.percent < last.percent) finishStream();
+    // Percent resetting after a finished stream without a Destination line also
+    // marks a new stream. Ignore mid-stream drops from HLS size re-estimates.
+    if (last && last.percent >= 100 && event.percent < last.percent) finishStream();
     last = event;
-    if (event.totalBytes === undefined) return event;
+    if (event.totalBytes === undefined) {
+      const percent = Math.max(lastPercent, Math.min(100, event.percent));
+      lastPercent = percent;
+      return { ...event, percent };
+    }
 
     const downloadedBytes = priorDownloaded + (event.downloadedBytes ?? 0);
     const totalBytes = priorTotal + event.totalBytes;

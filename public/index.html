@@ -1224,10 +1224,12 @@
     if (key === inputClipVideoKey) return;
     const hadVideo = inputClipVideoKey !== '';
     inputClipVideoKey = key;
-    if (!hadVideo || !hasInputClipText()) return;
+    if (!hadVideo) return;
+    inputClipUserSet = false;
+    if (!hasInputClipText()) return;
     inputClipStart.value = '';
     inputClipEnd.value = '';
-    if (!inputClipUserSet) inputClipOpen = false;
+    inputClipOpen = false;
     inputClipPreviewOpen = false;
     inputClipPreviewAutoPlay = false;
   }
@@ -1439,6 +1441,8 @@
 
   function statusText(item) {
     const clip = Boolean(item.activeClip);
+    if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
+    if (item.reconnecting && isActive(item)) return 'reconnecting';
     if (item.status === 'downloading' && typeof item.percent === 'number') {
       const downloaded = formatBytes(item.downloadedBytes);
       const total = formatBytes(item.totalBytes);
@@ -1458,8 +1462,6 @@
     if (['uploading', 'compressing'].includes(item.status) && typeof item.percent === 'number') {
       return item.status + ' ' + Math.floor(item.percent) + '%';
     }
-    if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
-    if (item.reconnecting && isActive(item)) return 'reconnecting';
     if (!clip) return item.status;
     if (item.status === 'starting') return 'starting clip';
     if (item.status === 'downloading') return 'downloading clip';
@@ -2666,6 +2668,7 @@
       clipMode: null,
       attempt: 0,
       reconnecting: false,
+      reconnectTimer: null,
       source: null,
       metadataPromise: null,
     };
@@ -3006,7 +3009,16 @@
     link.remove();
   }
 
+  function clearReconnectTimer(item) {
+    if (item.reconnectTimer) {
+      clearTimeout(item.reconnectTimer);
+      item.reconnectTimer = null;
+    }
+    item.reconnecting = false;
+  }
+
   function finishItem(item, status, message = null) {
+    clearReconnectTimer(item);
     if (item.source) item.source.close();
     item.source = null;
     item.status = status;
@@ -3211,8 +3223,8 @@
 
     source.addEventListener('done', () => {
       source.close();
-      clearReconnect();
       if (!isLive()) return;
+      clearReconnect();
       item.source = null;
       item.status = 'saving';
       render();
@@ -3233,20 +3245,14 @@
     // EventSource reconnects on its own and the server replays state on each
     // connect. Give up only when the job is gone (CLOSED) or the stream has
     // been down for RECONNECT_LIMIT_MS.
-    let reconnectTimer = null;
     const clearReconnect = () => {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-      if (item.reconnecting) {
-        item.reconnecting = false;
-        scheduleRender();
-      }
+      const wasReconnecting = item.reconnecting;
+      clearReconnectTimer(item);
+      if (wasReconnecting) scheduleRender();
     };
     const failLost = () => {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-      item.reconnecting = false;
-      if (isLive() && isActive(item)) finishItem(item, 'failed', 'lost connection to server');
+      if (!isLive() || !isActive(item)) return;
+      finishItem(item, 'failed', 'lost connection to server');
     };
 
     source.onopen = () => {
@@ -3259,15 +3265,16 @@
         failLost();
         return;
       }
-      if (!reconnectTimer) {
+      if (!item.reconnectTimer) {
         item.reconnecting = true;
-        reconnectTimer = setTimeout(failLost, RECONNECT_LIMIT_MS);
+        item.reconnectTimer = setTimeout(failLost, RECONNECT_LIMIT_MS);
         scheduleRender();
       }
     };
   }
 
   function resetForQueue(item) {
+    clearReconnectTimer(item);
     item.status = 'queued';
     if (isVideoDownload(item)) item.format = videoFormat();
     item.percent = null;
@@ -3278,7 +3285,6 @@
     item.error = null;
     item.jobId = null;
     item.source = null;
-    item.reconnecting = false;
     item.activeClip = null;
     item.clipMode = null;
     item.upload = null;
@@ -3322,6 +3328,7 @@
   }
 
   function stopConnections(item) {
+    clearReconnectTimer(item);
     if (item.source) item.source.close();
     if (item.upload) item.upload.abort();
   }
@@ -3518,6 +3525,7 @@
   inputClipClear.addEventListener('click', () => {
     inputClipStart.value = '';
     inputClipEnd.value = '';
+    inputClipUserSet = false;
     inputClipPreviewOpen = false;
     inputClipPreviewAutoPlay = false;
     resetClipView(inputClipView);

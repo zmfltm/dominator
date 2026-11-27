@@ -15,8 +15,10 @@ import {
   parseJobTimeoutMs,
   parseJobTitleLine,
   PROGRESS_INTERVAL_MS,
+  setStartupSweep,
   shouldEmitProgress,
   startCompressJob,
+  waitForStartupSweep,
 } from './jobs';
 
 describe('parseJobTimeoutMs', () => {
@@ -327,9 +329,10 @@ describe('startCompressJob upload limits', () => {
 });
 
 describe('accurate clips', () => {
-  it('copies only when a keyframe is within 0.05s of the start', () => {
+  it('copies only when a keyframe sits at or just before the start', () => {
     expect(hasKeyframeNearStart('6.000000,K_\n7.040000,__\n', 7)).toBe(false);
-    expect(hasKeyframeNearStart('6.000000,K_\n7.030000,K_\n7.120000,__\n', 7)).toBe(true);
+    expect(hasKeyframeNearStart('6.000000,K_\n7.030000,K_\n7.120000,__\n', 7)).toBe(false);
+    expect(hasKeyframeNearStart('7.000000,K_\n', 7)).toBe(true);
     expect(hasKeyframeNearStart('6.96,K_\n', 7)).toBe(true);
     expect(hasKeyframeNearStart('', 7)).toBe(false);
     expect(hasKeyframeNearStart('7.000000,__\n', 7)).toBe(false);
@@ -341,14 +344,57 @@ describe('accurate clips', () => {
     expect(args.slice(-2)).toEqual(['--', '/tmp/a.mp4']);
   });
 
-  it('forces keyframes at cuts for section downloads only', () => {
-    const request = {
-      url: 'https://youtu.be/x',
-      format: 'mp4' as const,
-      clip: { start: 7, end: 9 },
-    };
-    expect(buildYtDlpArgs(request, '/tmp/d', { sections: true })).toContain('--force-keyframes-at-cuts');
-    expect(buildYtDlpArgs(request, '/tmp/d')).not.toContain('--force-keyframes-at-cuts');
+  it('forces keyframes at cuts with fast encoder args for video section downloads', () => {
+    const mp4 = buildYtDlpArgs(
+      { url: 'https://youtu.be/x', format: 'mp4', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+      { sections: true },
+    );
+    expect(mp4).toContain('--force-keyframes-at-cuts');
+    expect(mp4[mp4.indexOf('--downloader-args') + 1]).toContain('libx264');
+    expect(mp4[mp4.indexOf('--downloader-args') + 1]).toContain('-crf 23');
+
+    const original = buildYtDlpArgs(
+      { url: 'https://youtu.be/x', format: 'original', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+      { sections: true },
+    );
+    expect(original).toContain('--force-keyframes-at-cuts');
+    expect(original[original.indexOf('--merge-output-format') + 1]).toBe('mkv');
+    expect(original[original.indexOf('--downloader-args') + 1]).toContain('libx264');
+    expect(original[original.indexOf('--downloader-args') + 1]).toContain('-crf 18');
+
+    const mp3 = buildYtDlpArgs(
+      { url: 'https://cdn.discordapp.com/attachments/1/2/a.ogg', format: 'mp3', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+      { sections: true },
+    );
+    expect(mp3).toContain('--force-keyframes-at-cuts');
+    expect(mp3).not.toContain('--downloader-args');
+
+    const full = buildYtDlpArgs(
+      { url: 'https://youtu.be/x', format: 'mp4', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+    );
+    expect(full).not.toContain('--force-keyframes-at-cuts');
+    expect(full).not.toContain('--downloader-args');
+  });
+
+  it('waits for the startup sweep gate before resolving', async () => {
+    let release!: () => void;
+    let released = false;
+    setStartupSweep(new Promise<void>((resolve) => {
+      release = () => {
+        released = true;
+        resolve();
+      };
+    }));
+    const waiting = waitForStartupSweep().then(() => released);
+    await Promise.resolve();
+    expect(released).toBe(false);
+    release();
+    await expect(waiting).resolves.toBe(true);
+    setStartupSweep(Promise.resolve());
   });
 
   it('keeps long clip output names within 255 bytes', () => {

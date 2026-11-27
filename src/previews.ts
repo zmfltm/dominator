@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
+import { waitForStartupSweep } from './jobs';
 import { fetchVideoMetadata } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import type { Storyboard } from './storyboard';
@@ -199,6 +200,7 @@ async function createPreview(url: string): Promise<Preview> {
   startingPreviews += 1;
   let dir: string;
   try {
+    await waitForStartupSweep();
     dir = await mkdtemp(join(tmpdir(), PREVIEW_TEMP_PREFIX));
   } catch (err) {
     startingPreviews -= 1;
@@ -221,9 +223,10 @@ async function createPreview(url: string): Promise<Preview> {
   return preview;
 }
 
-// Kills every running preview child and resolves once they exit (or after
-// timeoutMs). Their generatePreview handlers then clean up the directories.
+// Kills every running preview child, waits for exits (or timeoutMs), and
+// removes preview temp directories so shutdown leaves nothing behind.
 export async function stopAllPreviews(timeoutMs = 6000): Promise<void> {
+  const dirs = [...previews.values()].map((preview) => preview.dir);
   const exits = [...previewChildren].map((child) => new Promise<void>((resolve) => {
     child.once('close', () => resolve());
     signalProcessTree(child, 'SIGTERM');
@@ -235,6 +238,7 @@ export async function stopAllPreviews(timeoutMs = 6000): Promise<void> {
   });
   await Promise.race([Promise.all(exits), timeout]);
   clearTimeout(timer);
+  await Promise.allSettled(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
 }
 
 export async function deletePreview(id: string): Promise<void> {

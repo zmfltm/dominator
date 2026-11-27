@@ -45,9 +45,20 @@ const TITLE_PRINT_PREFIX = 'DOMINATOR_TITLE:';
 // Otherwise the whole video is downloaded and trimmed locally. Set at startup
 // from probeFfmpegNetwork().
 let sectionDownloads = false;
+let startupSweep: Promise<void> = Promise.resolve();
 
 export function setSectionDownloads(enabled: boolean): void {
   sectionDownloads = enabled;
+}
+
+// Holds new temp directory creation until the post-bind startup sweep finishes,
+// preventing a race between startup cleanup and early requests.
+export function setStartupSweep(promise: Promise<void>): void {
+  startupSweep = promise.catch(() => {});
+}
+
+export function waitForStartupSweep(): Promise<void> {
+  return startupSweep;
 }
 
 export class JobLimitError extends Error {
@@ -228,19 +239,41 @@ export function parseJobTitleLine(line: string): string | undefined {
   return title && title !== 'NA' ? title : undefined;
 }
 
+// yt-dlp's --force-keyframes-at-cuts omits `-c copy`, which makes ffmpeg fall
+// back to its container default encoder (very slow libvpx-vp9 on WebM). Force
+// fast H.264/AAC encoding matching the local trim profiles instead.
+function sectionClipArgs(request: JobRequest): string[] {
+  const base = [
+    '--download-sections',
+    `*${request.clip!.start}-${request.clip!.end}`,
+    // Cut on the requested frames instead of the nearest keyframes.
+    '--force-keyframes-at-cuts',
+  ];
+  if (request.format === 'original') {
+    return [
+      ...base,
+      '--merge-output-format',
+      'mkv',
+      '--downloader-args',
+      'ffmpeg_o:-c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 18 -c:a aac -b:a 256k',
+    ];
+  }
+  if (request.format === 'mp4') {
+    return [
+      ...base,
+      '--downloader-args',
+      'ffmpeg_o:-c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 23 -c:a aac -b:a 160k -movflags +faststart',
+    ];
+  }
+  return base;
+}
+
 export function buildYtDlpArgs(
   request: JobRequest,
   dir: string,
   options: { sections?: boolean; fast?: boolean } = {},
 ): string[] {
-  const section = options.sections && request.clip
-    ? [
-      '--download-sections',
-      `*${request.clip.start}-${request.clip.end}`,
-      // Cut on the requested frames instead of the nearest keyframes.
-      '--force-keyframes-at-cuts',
-    ]
-    : [];
+  const section = options.sections && request.clip ? sectionClipArgs(request) : [];
   return [
     '--ignore-config',
     ...youtubeExtractorArgs(request.url, { fast: options.fast }),
@@ -290,6 +323,8 @@ export function buildKeyframeProbeArgs(inputPath: string, start: number): string
   ];
 }
 
+// ffmpeg `-ss <start> -c copy` always seeks backward to a keyframe at or before
+// `start`, so only keyframes at/before `start` (within tolerance) can copy cleanly.
 export function hasKeyframeNearStart(
   probeOutput: string,
   start: number,
@@ -299,7 +334,7 @@ export function hasKeyframeNearStart(
     const [pts, flags] = line.trim().split(',');
     if (!flags?.startsWith('K')) return false;
     const time = Number(pts);
-    return Number.isFinite(time) && Math.abs(time - start) <= tolerance;
+    return Number.isFinite(time) && time <= start + 0.001 && start - time <= tolerance;
   });
 }
 
@@ -409,11 +444,13 @@ function stopJob(job: Job, status: 'canceled' | 'error', message: string): void 
   forceKill.unref();
 }
 
-// Stops every running job and resolves once their children have exited (or
-// after timeoutMs), so a shutting-down server leaves no orphaned yt-dlp/ffmpeg.
+// Stops every running job, waits for children to exit (or timeoutMs), and
+// removes job temp directories so a shutting-down server leaves nothing behind.
 export async function stopAllJobs(timeoutMs = 6000): Promise<void> {
   const exits: Promise<void>[] = [];
+  const dirs: string[] = [];
   for (const job of jobs.values()) {
+    dirs.push(job.dir);
     const child = job.child;
     if (job.status === 'running') {
       if (isChildAlive(child)) exits.push(waitForExit(child));
@@ -429,6 +466,7 @@ export async function stopAllJobs(timeoutMs = 6000): Promise<void> {
   });
   await Promise.race([Promise.all(exits), timeout]);
   clearTimeout(timer);
+  await Promise.allSettled(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
 }
 
 function waitForExit(child: NonNullable<Job['child']>): Promise<void> {
@@ -465,6 +503,7 @@ export async function startJob(request: JobRequest): Promise<Job> {
   startingJobs += 1;
   let dir: string;
   try {
+    await waitForStartupSweep();
     dir = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
   } catch (err) {
     startingJobs -= 1;
@@ -659,7 +698,7 @@ async function canCopyClipAccurately(
   clip: Clip,
   format: JobRequest['format'],
 ): Promise<boolean> {
-  if (format === 'mp3' || format === 'audio') return true;
+  if (format === 'mp3' || format === 'audio' || clip.start === 0) return true;
   const lines: string[] = [];
   const error = await runJobProcess(
     job,
@@ -757,6 +796,7 @@ export async function startCompressJob(
   startingJobs += 1;
   let dir: string;
   try {
+    await waitForStartupSweep();
     dir = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
   } catch (err) {
     startingJobs -= 1;
