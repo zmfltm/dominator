@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFfmpegCopyClipArgs,
   buildFfmpegReencodeClipArgs,
+  buildKeyframeProbeArgs,
   buildYtDlpArgs,
   clipOutputPath,
   DEFAULT_JOB_TIMEOUT_MS,
   formatClipTimestamp,
+  hasKeyframeNearStart,
   isAtJobLimit,
   isOwnedTempDirName,
   isStale,
@@ -321,5 +323,38 @@ describe('startCompressJob upload limits', () => {
     await expect(startCompressJob(stream(0), 'a.mp4')).rejects.toMatchObject({
       reason: 'empty',
     });
+  });
+});
+
+describe('accurate clips', () => {
+  it('copies only when a keyframe is within 0.05s of the start', () => {
+    expect(hasKeyframeNearStart('6.000000,K_\n7.040000,__\n', 7)).toBe(false);
+    expect(hasKeyframeNearStart('6.000000,K_\n7.030000,K_\n7.120000,__\n', 7)).toBe(true);
+    expect(hasKeyframeNearStart('6.96,K_\n', 7)).toBe(true);
+    expect(hasKeyframeNearStart('', 7)).toBe(false);
+    expect(hasKeyframeNearStart('7.000000,__\n', 7)).toBe(false);
+  });
+
+  it('probes video packets near the start with -- before the path', () => {
+    const args = buildKeyframeProbeArgs('/tmp/a.mp4', 7.5);
+    expect(args).toContain('7.5%+0.5');
+    expect(args.slice(-2)).toEqual(['--', '/tmp/a.mp4']);
+  });
+
+  it('forces keyframes at cuts for section downloads only', () => {
+    const request = {
+      url: 'https://youtu.be/x',
+      format: 'mp4' as const,
+      clip: { start: 7, end: 9 },
+    };
+    expect(buildYtDlpArgs(request, '/tmp/d', { sections: true })).toContain('--force-keyframes-at-cuts');
+    expect(buildYtDlpArgs(request, '/tmp/d')).not.toContain('--force-keyframes-at-cuts');
+  });
+
+  it('keeps long clip output names within 255 bytes', () => {
+    const input = `/tmp/d/${'한'.repeat(83)}.webm`;
+    const out = clipOutputPath(input, 'original', { reencode: true });
+    expect(Buffer.byteLength(out.split('/').pop() ?? '')).toBeLessThanOrEqual(255);
+    expect(out.endsWith('.clip.mp4')).toBe(true);
   });
 });

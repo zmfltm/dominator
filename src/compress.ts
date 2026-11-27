@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { parse } from 'node:path';
 import type { Readable } from 'node:stream';
+import { fitFileName } from './filename';
 import { DETACH_CHILD_PROCESS } from './process';
 
 export type MediaKind = 'video' | 'audio';
@@ -200,7 +201,8 @@ function baseName(originalName: string): string {
 }
 
 export function compressedFileName(originalName: string, kind: MediaKind): string {
-  return `${baseName(originalName)}.compressed.${EXTENSION_BY_KIND[kind]}`;
+  const stem = baseName(originalName);
+  return fitFileName(stem, `.compressed.${EXTENSION_BY_KIND[kind]}`);
 }
 
 export function uploadFileName(originalName: string): string {

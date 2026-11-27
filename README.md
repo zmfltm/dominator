@@ -36,6 +36,8 @@ Clips download only the selected section when ffmpeg can open network URLs. Full
 
 A single download is stopped after 2 hours. Set `DOMINATOR_JOB_TIMEOUT_MS` to change that limit.
 
+Requests are only accepted when the `Host` header is `localhost`, `127.0.0.1`, `[::1]`, or a Tailscale `*.ts.net` name (any port); anything else gets a 403, which blocks DNS rebinding. To serve the app under another hostname, such as a Cloudflare Tunnel, set `DOMINATOR_ALLOWED_HOSTS` to a comma-separated list of hostnames, for example `DOMINATOR_ALLOWED_HOSTS=dl.example.com`.
+
 ## Tailscale
 
 With the app running and Tailscale connected:

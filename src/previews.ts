@@ -41,6 +41,7 @@ export interface Preview {
   completedAt?: number;
 }
 
+const previewChildren = new Set<ChildProcessByStdio<null, null, Readable>>();
 const previews = new Map<string, Preview>();
 const previewByUrl = new Map<string, string>();
 const startingPreviewByUrl = new Map<string, Promise<Preview>>();
@@ -220,6 +221,22 @@ async function createPreview(url: string): Promise<Preview> {
   return preview;
 }
 
+// Kills every running preview child and resolves once they exit (or after
+// timeoutMs). Their generatePreview handlers then clean up the directories.
+export async function stopAllPreviews(timeoutMs = 6000): Promise<void> {
+  const exits = [...previewChildren].map((child) => new Promise<void>((resolve) => {
+    child.once('close', () => resolve());
+    signalProcessTree(child, 'SIGTERM');
+    setTimeout(() => signalProcessTree(child, 'SIGKILL'), 3000).unref();
+  }));
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([Promise.all(exits), timeout]);
+  clearTimeout(timer);
+}
+
 export async function deletePreview(id: string): Promise<void> {
   const preview = previews.get(id);
   if (!preview) return;
@@ -340,6 +357,8 @@ function runProcess(
       return;
     }
 
+    previewChildren.add(child);
+    child.once('close', () => previewChildren.delete(child));
     let stderr = '';
     let settled = false;
     let timedOut = false;

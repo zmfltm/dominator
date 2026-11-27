@@ -97,6 +97,9 @@ describe('compressedFileName', () => {
 
   it('caps the length and falls back to file', () => {
     expect(compressedFileName(`${'x'.repeat(500)}.mp4`, 'video')).toBe(`${'x'.repeat(120)}.compressed.mp4`);
+    const hangul = compressedFileName(`${'한'.repeat(81)}.mp4`, 'video');
+    expect(Buffer.byteLength(hangul)).toBeLessThanOrEqual(255);
+    expect(hangul.endsWith('.compressed.mp4')).toBe(true);
     expect(compressedFileName('', 'audio')).toBe('file.compressed.mp3');
     expect(compressedFileName('...', 'video')).toBe('file.compressed.mp4');
     expect(compressedFileName('/', 'video')).toBe('file.compressed.mp4');

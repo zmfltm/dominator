@@ -35,7 +35,39 @@ import { isSoundCloudUrl, parseJobRequest } from './validate';
 
 export const app = new Hono();
 
+export const DELIVERED_JOB_GRACE_MS = 2 * 60 * 1000;
 const MAX_API_BODY_BYTES = 16 * 1024;
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+export function parseAllowedHosts(value: string | undefined): Set<string> {
+  return new Set(
+    (value ?? '')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+const allowedHosts = parseAllowedHosts(process.env.DOMINATOR_ALLOWED_HOSTS);
+
+// Rejects DNS rebinding: a rebound page still sends its own hostname as Host,
+// and an Origin == Host check cannot tell.
+export function isAllowedHost(host: string | undefined, extra: Set<string>): boolean {
+  const match = host && /^(\[[0-9a-f:.]+\]|[^:@/\s]+)(?::\d{1,5})?$/i.exec(host);
+  if (!match) return false;
+  const name = match[1].toLowerCase();
+  // Tailscale controls ts.net DNS, so those names cannot be rebound by a
+  // third party; this keeps `tailscale serve` working without extra config.
+  return LOOPBACK_HOSTS.has(name) || name.endsWith('.ts.net') || extra.has(name);
+}
+
+app.use('*', async (c, next) => {
+  if (!isAllowedHost(c.req.header('host'), allowedHosts)) {
+    return c.json({ error: 'host not allowed' }, 403);
+  }
+  return next();
+});
 
 app.use('/api/*', async (c, next) => {
   if (c.req.method !== 'POST') return next();
@@ -468,9 +500,14 @@ app.get('/api/jobs/:id/file', async (c) => {
   });
   fileStream.once('close', () => {
     if (fullyRead) {
-      void deleteJob(job.id).catch((err) => {
-        console.error(`failed to clean delivered job ${job.id}:`, err);
-      });
+      // 'end' fires when the bytes are handed to the socket, not when the
+      // client has them, so keep the file for a retry. The stale reaper is
+      // the backstop if this timer never runs.
+      setTimeout(() => {
+        void deleteJob(job.id).catch((err) => {
+          console.error(`failed to clean delivered job ${job.id}:`, err);
+        });
+      }, DELIVERED_JOB_GRACE_MS).unref();
     }
   });
   return new Response(Readable.toWeb(fileStream) as ReadableStream, {

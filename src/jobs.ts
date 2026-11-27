@@ -18,7 +18,8 @@ import {
   type CompressOptions,
 } from './compress';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
-import { parseProgressLine, type ProgressEvent } from './progress';
+import { fitFileName } from './filename';
+import { createProgressTracker, type ProgressEvent } from './progress';
 import { isSoundCloudUrl, isTwitterUrl, isYouTubeUrl, type JobRequest } from './validate';
 import { youtubeExtractorArgs } from './ytdlp';
 
@@ -164,7 +165,7 @@ export function clipOutputPath(
   const extension = format !== 'original'
     ? format
     : options.reencode ? 'mp4' : parsed.ext.slice(1) || 'mkv';
-  return join(parsed.dir, `${parsed.name}.clip.${extension}`);
+  return join(parsed.dir, fitFileName(parsed.name, `.clip.${extension}`));
 }
 
 export function buildFfmpegCopyClipArgs(
@@ -233,7 +234,12 @@ export function buildYtDlpArgs(
   options: { sections?: boolean; fast?: boolean } = {},
 ): string[] {
   const section = options.sections && request.clip
-    ? ['--download-sections', `*${request.clip.start}-${request.clip.end}`]
+    ? [
+      '--download-sections',
+      `*${request.clip.start}-${request.clip.end}`,
+      // Cut on the requested frames instead of the nearest keyframes.
+      '--force-keyframes-at-cuts',
+    ]
     : [];
   return [
     '--ignore-config',
@@ -261,6 +267,40 @@ function playlistFilenamePrefix(request: JobRequest): string {
   if (!request.playlist) return '';
   const width = Math.max(2, String(request.playlist.count).length);
   return `${String(request.playlist.index).padStart(width, '0')} - `;
+}
+
+// A stream copy can only start on a keyframe. Reads ffprobe's
+// `pts_time,flags` CSV for packets around the clip start.
+export const KEYFRAME_TOLERANCE_SECONDS = 0.05;
+
+export function buildKeyframeProbeArgs(inputPath: string, start: number): string[] {
+  return [
+    '-v',
+    'error',
+    '-select_streams',
+    'v:0',
+    '-show_entries',
+    'packet=pts_time,flags',
+    '-of',
+    'csv=p=0',
+    '-read_intervals',
+    `${start}%+0.5`,
+    '--',
+    inputPath,
+  ];
+}
+
+export function hasKeyframeNearStart(
+  probeOutput: string,
+  start: number,
+  tolerance = KEYFRAME_TOLERANCE_SECONDS,
+): boolean {
+  return probeOutput.split('\n').some((line) => {
+    const [pts, flags] = line.trim().split(',');
+    if (!flags?.startsWith('K')) return false;
+    const time = Number(pts);
+    return Number.isFinite(time) && Math.abs(time - start) <= tolerance;
+  });
 }
 
 function ffmpegBaseClipArgs(inputPath: string, clip: Clip): string[] {
@@ -369,6 +409,38 @@ function stopJob(job: Job, status: 'canceled' | 'error', message: string): void 
   forceKill.unref();
 }
 
+// Stops every running job and resolves once their children have exited (or
+// after timeoutMs), so a shutting-down server leaves no orphaned yt-dlp/ffmpeg.
+export async function stopAllJobs(timeoutMs = 6000): Promise<void> {
+  const exits: Promise<void>[] = [];
+  for (const job of jobs.values()) {
+    const child = job.child;
+    if (job.status === 'running') {
+      if (isChildAlive(child)) exits.push(waitForExit(child));
+      stopJob(job, 'canceled', 'server shutting down');
+    } else if (isChildAlive(child)) {
+      exits.push(waitForExit(child));
+      signalProcessTree(child, 'SIGKILL');
+    }
+  }
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([Promise.all(exits), timeout]);
+  clearTimeout(timer);
+}
+
+function waitForExit(child: NonNullable<Job['child']>): Promise<void> {
+  return new Promise((resolve) => {
+    if (!isChildAlive(child)) {
+      resolve();
+      return;
+    }
+    child.once('close', () => resolve());
+  });
+}
+
 function activeJobCount(): number {
   let count = startingJobs;
   for (const job of jobs.values()) {
@@ -450,6 +522,7 @@ function spawnDownload(
   let pending = '';
   let lastEmitted: ProgressEvent | null = null;
   let lastEmittedAt = 0;
+  const trackProgress = createProgressTracker();
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
     pending += chunk;
@@ -465,7 +538,7 @@ function spawnDownload(
           continue;
         }
       }
-      const progress = parseProgressLine(line);
+      const progress = trackProgress(line);
       if (!progress) continue;
       job.lastProgress = progress;
       const now = Date.now();
@@ -544,10 +617,12 @@ async function trimDownloadedFile(
   emitProgress(job, { stage: 'processing' });
   let outputPath = clipOutputPath(inputPath, format);
 
-  const copyError = await runFfmpeg(
-    job,
-    buildFfmpegCopyClipArgs(inputPath, outputPath, clip, format),
-  );
+  const accurateCopy = await canCopyClipAccurately(job, inputPath, clip, format);
+  if (job.status !== 'running') return outputPath;
+
+  const copyError = accurateCopy
+    ? await runFfmpeg(job, buildFfmpegCopyClipArgs(inputPath, outputPath, clip, format))
+    : 'clip start is not on a keyframe';
   if (job.status !== 'running') return outputPath;
 
   if (copyError) {
@@ -575,6 +650,27 @@ async function trimDownloadedFile(
   return outputPath;
 }
 
+// Audio-only output copies packet by packet, so it is already accurate. For
+// video, copy only when a keyframe sits at the clip start; otherwise ffmpeg
+// would snap back to the previous keyframe and the clip would start early.
+async function canCopyClipAccurately(
+  job: Job,
+  inputPath: string,
+  clip: Clip,
+  format: JobRequest['format'],
+): Promise<boolean> {
+  if (format === 'mp3' || format === 'audio') return true;
+  const lines: string[] = [];
+  const error = await runJobProcess(
+    job,
+    'ffprobe',
+    buildKeyframeProbeArgs(inputPath, clip.start),
+    (line) => lines.push(line),
+  );
+  if (error) return false;
+  return hasKeyframeNearStart(lines.join('\n'), clip.start);
+}
+
 function emitProgress(job: Job, progress: ProgressEvent): void {
   job.lastProgress = progress;
   job.events.emit('progress', progress);
@@ -585,15 +681,26 @@ function runFfmpeg(
   args: string[],
   onStdoutLine?: (line: string) => void,
 ): Promise<string | null> {
+  return runJobProcess(job, 'ffmpeg', args, onStdoutLine);
+}
+
+// Spawns a job-owned child (ffmpeg or ffprobe) as job.child so cancel and
+// timeout can kill its process tree.
+function runJobProcess(
+  job: Job,
+  command: 'ffmpeg' | 'ffprobe',
+  args: string[],
+  onStdoutLine?: (line: string) => void,
+): Promise<string | null> {
   return new Promise((resolve) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
     try {
-      child = spawn('ffmpeg', args, {
+      child = spawn(command, args, {
         detached: DETACH_CHILD_PROCESS,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (err) {
-      resolve(`failed to start ffmpeg: ${(err as Error).message}`);
+      resolve(`failed to start ${command}: ${(err as Error).message}`);
       return;
     }
 
@@ -620,7 +727,7 @@ function runFfmpeg(
     });
 
     child.on('error', (err) => {
-      settle(`failed to start ffmpeg: ${err.message}`);
+      settle(`failed to start ${command}: ${err.message}`);
     });
 
     child.on('close', (code, signal) => {
