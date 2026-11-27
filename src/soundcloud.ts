@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { extractYtDlpError } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { isSoundCloudUrl, MAX_PLAYLIST_TRACKS } from './validate';
@@ -9,7 +9,22 @@ export const MAX_RUNNING_SOUNDCLOUD_LOOKUPS = 2;
 const MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
 
 let runningLookups = 0;
+const soundCloudChildren = new Set<ChildProcess>();
 const lookupsByUrl = new Map<string, Promise<SoundCloudResult>>();
+
+export async function stopAllSoundCloud(timeoutMs = 3000): Promise<void> {
+  const exits = [...soundCloudChildren].map((child) => new Promise<void>((resolve) => {
+    child.once('close', () => resolve());
+    signalProcessTree(child, 'SIGTERM');
+    setTimeout(() => signalProcessTree(child, 'SIGKILL'), 1500).unref();
+  }));
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([Promise.all(exits), timeout]);
+  clearTimeout(timer);
+}
 
 export class SoundCloudError extends Error {
   constructor(message: string) {
@@ -132,6 +147,8 @@ function runSoundCloudLookup(url: string, timeoutMs: number): Promise<SoundCloud
       detached: DETACH_CHILD_PROCESS,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    soundCloudChildren.add(child);
+    child.once('close', () => soundCloudChildren.delete(child));
 
     let stdout = '';
     let stderr = '';

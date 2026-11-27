@@ -65,3 +65,49 @@ function parseByteSize(value: string | undefined, unit: string | undefined): num
   if (!multiplier) return undefined;
   return Math.round(amount * multiplier);
 }
+
+const DESTINATION_RE = /^\[download\]\s+Destination:/;
+
+type DownloadingEvent = Extract<ProgressEvent, { stage: 'downloading' }>;
+
+// yt-dlp reports each stream (video, then audio) as its own 0-100%. This keeps
+// finished streams' bytes so a job's progress never moves backward.
+export function createProgressTracker(): (line: string) => ProgressEvent | null {
+  let priorDownloaded = 0;
+  let priorTotal = 0;
+  let last: DownloadingEvent | null = null;
+  let lastPercent = 0;
+
+  const finishStream = () => {
+    if (last?.totalBytes !== undefined) {
+      priorTotal += last.totalBytes;
+      priorDownloaded += last.downloadedBytes ?? last.totalBytes;
+    }
+    last = null;
+  };
+
+  return (line) => {
+    const trimmed = line.trim();
+    if (DESTINATION_RE.test(trimmed)) {
+      finishStream();
+      return null;
+    }
+    const event = parseProgressLine(line);
+    if (!event || event.stage !== 'downloading') return event;
+    // Percent resetting after a finished stream without a Destination line also
+    // marks a new stream. Ignore mid-stream drops from HLS size re-estimates.
+    if (last && last.percent >= 100 && event.percent < last.percent) finishStream();
+    last = event;
+    if (event.totalBytes === undefined) {
+      const percent = Math.max(lastPercent, Math.min(100, event.percent));
+      lastPercent = percent;
+      return { ...event, percent };
+    }
+
+    const downloadedBytes = priorDownloaded + (event.downloadedBytes ?? 0);
+    const totalBytes = priorTotal + event.totalBytes;
+    const percent = Math.max(lastPercent, Math.min(100, (downloadedBytes / totalBytes) * 100));
+    lastPercent = percent;
+    return { ...event, percent, downloadedBytes, totalBytes };
+  };
+}

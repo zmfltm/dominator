@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFfmpegCopyClipArgs,
   buildFfmpegReencodeClipArgs,
+  buildKeyframeProbeArgs,
   buildYtDlpArgs,
   clipOutputPath,
   DEFAULT_JOB_TIMEOUT_MS,
   formatClipTimestamp,
+  hasKeyframeNearStart,
   isAtJobLimit,
   isOwnedTempDirName,
   isStale,
@@ -13,8 +15,10 @@ import {
   parseJobTimeoutMs,
   parseJobTitleLine,
   PROGRESS_INTERVAL_MS,
+  setStartupSweep,
   shouldEmitProgress,
   startCompressJob,
+  waitForStartupSweep,
 } from './jobs';
 
 describe('parseJobTimeoutMs', () => {
@@ -276,6 +280,36 @@ describe('clip args', () => {
       '/tmp/dominator-test/source.clip.mp3',
     );
   });
+
+  it('keeps the source container for original-quality clips', () => {
+    expect(clipOutputPath('/tmp/dominator-test/source.webm', 'original')).toBe(
+      '/tmp/dominator-test/source.clip.webm',
+    );
+    expect(clipOutputPath('/tmp/dominator-test/source.webm', 'original', { reencode: true })).toBe(
+      '/tmp/dominator-test/source.clip.mp4',
+    );
+  });
+
+  it('selects the best streams in any codec for original quality', () => {
+    const args = buildYtDlpArgs(
+      { url: 'https://youtu.be/dQw4w9WgXcQ', format: 'original' },
+      '/tmp/dominator-test',
+    );
+
+    expect(args[args.indexOf('-f') + 1]).toBe('bv*+ba/b');
+    expect(args).not.toContain('-S');
+    expect(args).not.toContain('--merge-output-format');
+  });
+
+  it('ranks resolution ahead of the HLS preference for original-quality Twitter/X', () => {
+    const args = buildYtDlpArgs(
+      { url: 'https://x.com/user/status/1349794411333394432', format: 'original' },
+      '/tmp/dominator-test',
+    );
+
+    expect(args[args.indexOf('-f') + 1]).toBe('bv*+ba/b');
+    expect(args[args.indexOf('-S') + 1]).toBe('res,fps,proto:m3u8_native');
+  });
 });
 
 describe('startCompressJob upload limits', () => {
@@ -291,5 +325,82 @@ describe('startCompressJob upload limits', () => {
     await expect(startCompressJob(stream(0), 'a.mp4')).rejects.toMatchObject({
       reason: 'empty',
     });
+  });
+});
+
+describe('accurate clips', () => {
+  it('copies only when a keyframe sits at or just before the start', () => {
+    expect(hasKeyframeNearStart('6.000000,K_\n7.040000,__\n', 7)).toBe(false);
+    expect(hasKeyframeNearStart('6.000000,K_\n7.030000,K_\n7.120000,__\n', 7)).toBe(false);
+    expect(hasKeyframeNearStart('7.000000,K_\n', 7)).toBe(true);
+    expect(hasKeyframeNearStart('6.96,K_\n', 7)).toBe(true);
+    expect(hasKeyframeNearStart('', 7)).toBe(false);
+    expect(hasKeyframeNearStart('7.000000,__\n', 7)).toBe(false);
+  });
+
+  it('probes video packets near the start with -- before the path', () => {
+    const args = buildKeyframeProbeArgs('/tmp/a.mp4', 7.5);
+    expect(args).toContain('7.5%+0.5');
+    expect(args.slice(-2)).toEqual(['--', '/tmp/a.mp4']);
+  });
+
+  it('forces keyframes at cuts with fast encoder args for video section downloads', () => {
+    const mp4 = buildYtDlpArgs(
+      { url: 'https://youtu.be/x', format: 'mp4', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+      { sections: true },
+    );
+    expect(mp4).toContain('--force-keyframes-at-cuts');
+    expect(mp4[mp4.indexOf('--downloader-args') + 1]).toContain('libx264');
+    expect(mp4[mp4.indexOf('--downloader-args') + 1]).toContain('-crf 23');
+
+    const original = buildYtDlpArgs(
+      { url: 'https://youtu.be/x', format: 'original', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+      { sections: true },
+    );
+    expect(original).toContain('--force-keyframes-at-cuts');
+    expect(original[original.indexOf('--merge-output-format') + 1]).toBe('mkv');
+    expect(original[original.indexOf('--downloader-args') + 1]).toContain('libx264');
+    expect(original[original.indexOf('--downloader-args') + 1]).toContain('-crf 18');
+
+    const mp3 = buildYtDlpArgs(
+      { url: 'https://cdn.discordapp.com/attachments/1/2/a.ogg', format: 'mp3', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+      { sections: true },
+    );
+    expect(mp3).toContain('--force-keyframes-at-cuts');
+    expect(mp3).not.toContain('--downloader-args');
+
+    const full = buildYtDlpArgs(
+      { url: 'https://youtu.be/x', format: 'mp4', clip: { start: 7, end: 9 } },
+      '/tmp/d',
+    );
+    expect(full).not.toContain('--force-keyframes-at-cuts');
+    expect(full).not.toContain('--downloader-args');
+  });
+
+  it('waits for the startup sweep gate before resolving', async () => {
+    let release!: () => void;
+    let released = false;
+    setStartupSweep(new Promise<void>((resolve) => {
+      release = () => {
+        released = true;
+        resolve();
+      };
+    }));
+    const waiting = waitForStartupSweep().then(() => released);
+    await Promise.resolve();
+    expect(released).toBe(false);
+    release();
+    await expect(waiting).resolves.toBe(true);
+    setStartupSweep(Promise.resolve());
+  });
+
+  it('keeps long clip output names within 255 bytes', () => {
+    const input = `/tmp/d/${'한'.repeat(83)}.webm`;
+    const out = clipOutputPath(input, 'original', { reencode: true });
+    expect(Buffer.byteLength(out.split('/').pop() ?? '')).toBeLessThanOrEqual(255);
+    expect(out.endsWith('.clip.mp4')).toBe(true);
   });
 });

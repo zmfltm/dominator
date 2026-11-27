@@ -202,10 +202,14 @@
   }
   #add,
   #clipInput { color: #9bb0c8; opacity: 0.92; }
+  #quality,
   #compress { color: #9bb0c8; opacity: 0.88; }
+  form:focus-within #quality,
+  form.has-input #quality,
   form:focus-within #compress,
   form.has-input #compress { opacity: 0.96; }
   #clipInput.active,
+  #quality.active,
   #compress.active { color: var(--accent); opacity: 1; }
   #download {
     width: 48px;
@@ -221,6 +225,7 @@
   #download.ready .control-icon,
   .clip-toggle.active .control-icon,
   #clipInput.active .control-icon,
+  #quality.active .control-icon,
   #compress.active .control-icon {
     filter: drop-shadow(0 0 6px var(--glow));
   }
@@ -693,7 +698,8 @@
       opacity: 1;
       background: transparent;
     }
-    #clipInput.active:not(:disabled):hover { color: var(--accent); }
+    #clipInput.active:not(:disabled):hover,
+    #quality.active:not(:disabled):hover { color: var(--accent); }
     #download.ready:hover {
       background: transparent;
       color: #8ae2ff;
@@ -773,6 +779,7 @@
       <input id="url" type="text" aria-label="media URL" autofocus spellcheck="false">
       <button id="add" type="button" hidden disabled aria-label="add to queue" data-icon="add"></button>
       <button id="clipInput" type="button" hidden disabled aria-label="edit clip" aria-expanded="false" aria-controls="inputClipPanel" data-icon="clip"></button>
+      <button id="quality" type="button" title="original quality (up to 4K)" aria-label="original quality, up to 4K" aria-pressed="false" data-icon="quality"></button>
       <button id="compress" type="button" title="compress file" aria-label="compress file" aria-expanded="false" aria-controls="compressPanel" data-icon="compress"></button>
       <button id="download" type="submit" aria-label="download" disabled data-icon="download"></button>
     </form>
@@ -849,6 +856,7 @@
   const inputClipPreviewPanel = document.getElementById('inputClipPreviewPanel');
   const clearTextButton = document.getElementById('clearText');
   const downloadButton = document.getElementById('download');
+  const qualityButton = document.getElementById('quality');
   const compressButton = document.getElementById('compress');
   const compressFileInput = document.getElementById('compressFile');
   const compressPanel = document.getElementById('compressPanel');
@@ -864,6 +872,7 @@
     minus: 'M4 10h12',
     download: 'M10 3v9 M6 8l4 4 4-4 M4 13v4h12v-4',
     compress: 'M3 3l5 5 M4 8h4V4 M17 17l-5-5 M16 12h-4v4',
+    quality: 'M3 5v6h5 M7 5v10 M11 5v10 M17 5l-6 5 6 5',
     clip: 'M3 3h4v4H3z M3 13h4v4H3z M7 7l10 10 M7 13 17 3',
     reset: 'M4 8V4 M4 8h4 M4 8l4-4h5l4 4v5l-4 4H7l-3-3',
     play: 'M6 3l10 7-10 7z',
@@ -899,6 +908,11 @@
   let inputResolveToken = 0;
   let inputClipOpen = false;
   let compressOpen = false;
+  const QUALITY_STORAGE_KEY = 'dominator.originalQuality';
+  let originalQuality = false;
+  try {
+    originalQuality = localStorage.getItem(QUALITY_STORAGE_KEY) === '1';
+  } catch {}
   const compressOptions = {
     quality: 'same',
     resolution: 'original',
@@ -922,6 +936,9 @@
   let inputClipPreviewTimer = null;
   let inputClipPreviewReplayTimer = null;
   let lastBackspaceAt = 0;
+  let inputClipUserSet = false;
+  let inputClipVideoKey = '';
+  let inputClipPreviewRegenUsed = false;
   let clipDragActive = false;
   let renderQueued = false;
   let renderFrame = 0;
@@ -949,6 +966,19 @@
       btn.setAttribute('aria-pressed', String(selected));
     });
     syncFloatingPanelHeight();
+  }
+
+  function videoFormat() {
+    return originalQuality ? 'original' : 'mp4';
+  }
+
+  function isVideoDownload(item) {
+    return item.kind === 'download' && (item.format === 'mp4' || item.format === 'original');
+  }
+
+  function updateQualityButton() {
+    qualityButton.classList.toggle('active', originalQuality);
+    qualityButton.setAttribute('aria-pressed', String(originalQuality));
   }
 
   function setStatus(text, isError = false) {
@@ -987,6 +1017,7 @@
     inputClipPreviewLoading = false;
     inputClipMetadataUrl = '';
     inputClipPreviewUrl = '';
+    inputClipPreviewRegenUsed = false;
     inputClipMetadataToken += 1;
     inputClipPreviewToken += 1;
     if (inputClipMetadataTimer) clearTimeout(inputClipMetadataTimer);
@@ -1001,6 +1032,8 @@
     inputClipStart.value = '';
     inputClipEnd.value = '';
     inputClipOpen = false;
+    inputClipUserSet = false;
+    inputClipVideoKey = '';
     resetInputClipSources();
   }
 
@@ -1171,6 +1204,34 @@
     if (range.end !== null) inputClipEnd.value = formatClipTime(range.end);
     inputClipOpen = true;
     return true;
+  }
+
+  // Identity of a video ignoring link time params, so a changed t= on the same
+  // video does not count as a new video.
+  function videoKeyFromUrl(url) {
+    try {
+      const parsed = new URL(url);
+      for (const name of ['t', 'start', 'end', 'time_continue']) parsed.searchParams.delete(name);
+      parsed.hash = '';
+      return parsed.href;
+    } catch {
+      return url;
+    }
+  }
+
+  function resetInputClipIfVideoChanged() {
+    const key = videoKeyFromUrl(firstInputUrl());
+    if (key === inputClipVideoKey) return;
+    const hadVideo = inputClipVideoKey !== '';
+    inputClipVideoKey = key;
+    if (!hadVideo) return;
+    inputClipUserSet = false;
+    if (!hasInputClipText()) return;
+    inputClipStart.value = '';
+    inputClipEnd.value = '';
+    inputClipOpen = false;
+    inputClipPreviewOpen = false;
+    inputClipPreviewAutoPlay = false;
   }
 
   function populateInputClipFromUrl() {
@@ -1380,6 +1441,8 @@
 
   function statusText(item) {
     const clip = Boolean(item.activeClip);
+    if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
+    if (item.reconnecting && isActive(item)) return 'reconnecting';
     if (item.status === 'downloading' && typeof item.percent === 'number') {
       const downloaded = formatBytes(item.downloadedBytes);
       const total = formatBytes(item.totalBytes);
@@ -1399,7 +1462,6 @@
     if (['uploading', 'compressing'].includes(item.status) && typeof item.percent === 'number') {
       return item.status + ' ' + Math.floor(item.percent) + '%';
     }
-    if (item.status === 'failed' || item.status === 'invalid') return item.error || item.status;
     if (!clip) return item.status;
     if (item.status === 'starting') return 'starting clip';
     if (item.status === 'downloading') return 'downloading clip';
@@ -1422,8 +1484,11 @@
 
   function paintClipTag(tag, item) {
     const clip = rowClip(item);
-    tag.hidden = !clip;
-    tag.textContent = clip ? clipLabel(clip) : '';
+    const parts = [];
+    if (item.kind === 'download' && item.format === 'original') parts.push('original quality');
+    if (clip) parts.push(clipLabel(clip));
+    tag.hidden = parts.length === 0;
+    tag.textContent = parts.join(' · ');
   }
 
   // Clip edits skip full renders to keep typing and dragging smooth.
@@ -1446,7 +1511,7 @@
 
   function downloadOneLabel(item) {
     if (item.kind === 'compress') return 'compress this file';
-    return item.format !== 'mp4' ? 'download this track' : 'download this video';
+    return isVideoDownload(item) ? 'download this video' : 'download this track';
   }
 
   function canStartSingleDownload(item, active) {
@@ -2000,7 +2065,7 @@
     parent.replaceChildren();
   }
 
-  function appendClipPreview(parent, source, clip, loading, autoPlay = false) {
+  function appendClipPreview(parent, source, clip, loading, autoPlay = false, hooks = {}) {
     if (!clip.ok || !clip.clip) {
       const note = document.createElement('p');
       note.className = 'clip-preview-note';
@@ -2045,7 +2110,11 @@
       }
     }
 
+    video.addEventListener('error', () => {
+      if (video.isConnected && video.getAttribute('src') && hooks.onExpired) hooks.onExpired();
+    });
     video.addEventListener('loadedmetadata', () => {
+      if (hooks.onLoaded) hooks.onLoaded();
       seekToStart();
       if (shouldPlay) playWhenReady();
     });
@@ -2130,6 +2199,7 @@
       getEndText: () => inputClipEnd.value,
       viewState: inputClipView,
       onChange: (start, end) => {
+        inputClipUserSet = true;
         inputClipStart.value = start;
         inputClipEnd.value = end;
         setStatus('');
@@ -2167,6 +2237,7 @@
       clip,
       inputClipPreviewLoading,
       inputClipPreviewAutoPlay,
+      { onExpired: expireInputPreview, onLoaded: () => { inputClipPreviewRegenUsed = false; } },
     );
     if (played) inputClipPreviewAutoPlay = false;
   }
@@ -2200,6 +2271,7 @@
         clip,
         item.previewLoading,
         shouldAutoPlay,
+        { onExpired: () => expireRowPreview(item), onLoaded: () => { item.previewRegenUsed = false; } },
       );
       if (played) item.clipPreviewAutoPlay = false;
     }
@@ -2316,6 +2388,7 @@
       }
       item.clipPreviewOpen = !item.clipPreviewOpen;
       item.clipPreviewAutoPlay = item.clipPreviewOpen;
+      item.previewRegenUsed = false;
       if (item.clipPreviewOpen && !item.previewSource) {
         item.previewRequested = true;
         void loadPreview(item);
@@ -2573,6 +2646,7 @@
       previewSource: null,
       previewLoading: false,
       previewRequested: false,
+      previewRegenUsed: false,
       clipPreviewOpen: false,
       clipPreviewAutoPlay: false,
       clipPreviewReplayTimer: null,
@@ -2593,6 +2667,8 @@
       activeClip: null,
       clipMode: null,
       attempt: 0,
+      reconnecting: false,
+      reconnectTimer: null,
       source: null,
       metadataPromise: null,
     };
@@ -2687,6 +2763,28 @@
     if (data.status === 'done' && data.spriteUrl) return data;
     if (!data.previewId) throw new Error('preview failed');
     return pollPreview(data.previewId, isCurrent);
+  }
+
+  // The server drops previews after an hour. When the stored source stops
+  // loading, forget it and request a fresh one, once per user action.
+  function expireRowPreview(item) {
+    if (!items.includes(item) || item.previewRegenUsed || item.previewLoading) return;
+    item.previewRegenUsed = true;
+    item.previewSource = null;
+    item.previewStoryboard = null;
+    item.previewRequested = true;
+    item.clipPreviewAutoPlay = item.clipPreviewOpen;
+    void loadPreview(item);
+  }
+
+  function expireInputPreview() {
+    if (inputClipPreviewRegenUsed || inputClipPreviewLoading) return;
+    inputClipPreviewRegenUsed = true;
+    inputClipPreviewSource = null;
+    inputClipPreviewStoryboard = null;
+    inputClipPreviewUrl = '';
+    inputClipPreviewAutoPlay = inputClipPreviewOpen;
+    void loadInputClipPreview();
   }
 
   async function loadPreview(item) {
@@ -2821,7 +2919,7 @@
     if (inputResolving) return null;
     const urls = urlInput.value.trim().split(/\s+/).filter(Boolean);
     if (urls.length === 0) return [];
-    const applySharedClip = inputClipOpen || urls.length === 1;
+    const applySharedClip = inputClipUserSet || urls.length === 1;
     const clipStart = applySharedClip ? inputClipStart.value.trim() : '';
     const clipEnd = applySharedClip ? inputClipEnd.value.trim() : '';
     const queued = [];
@@ -2839,7 +2937,7 @@
     try {
       for (const url of urls) {
         if (sourceForUrl(url) !== 'soundcloud') {
-          const format = sourceForUrl(url) === 'discord' ? 'mp3' : 'mp4';
+          const format = sourceForUrl(url) === 'discord' ? 'mp3' : videoFormat();
           queued.push(queueItem({
             url,
             format,
@@ -2911,7 +3009,16 @@
     link.remove();
   }
 
+  function clearReconnectTimer(item) {
+    if (item.reconnectTimer) {
+      clearTimeout(item.reconnectTimer);
+      item.reconnectTimer = null;
+    }
+    item.reconnecting = false;
+  }
+
   function finishItem(item, status, message = null) {
+    clearReconnectTimer(item);
     if (item.source) item.source.close();
     item.source = null;
     item.status = status;
@@ -3070,6 +3177,8 @@
     followJob(item);
   }
 
+  const RECONNECT_LIMIT_MS = 60_000;
+
   function followJob(item) {
     const source = new EventSource('/api/jobs/' + item.jobId + '/events');
     item.source = source;
@@ -3115,6 +3224,7 @@
     source.addEventListener('done', () => {
       source.close();
       if (!isLive()) return;
+      clearReconnect();
       item.source = null;
       item.status = 'saving';
       render();
@@ -3132,13 +3242,41 @@
       if (isLive()) finishItem(item, 'canceled');
     });
 
+    // EventSource reconnects on its own and the server replays state on each
+    // connect. Give up only when the job is gone (CLOSED) or the stream has
+    // been down for RECONNECT_LIMIT_MS.
+    const clearReconnect = () => {
+      const wasReconnecting = item.reconnecting;
+      clearReconnectTimer(item);
+      if (wasReconnecting) scheduleRender();
+    };
+    const failLost = () => {
+      if (!isLive() || !isActive(item)) return;
+      finishItem(item, 'failed', 'lost connection to server');
+    };
+
+    source.onopen = () => {
+      if (isLive()) clearReconnect();
+    };
+
     source.onerror = () => {
-      if (isLive() && isActive(item)) finishItem(item, 'failed', 'lost connection to server');
+      if (!isLive() || !isActive(item)) return;
+      if (source.readyState === EventSource.CLOSED) {
+        failLost();
+        return;
+      }
+      if (!item.reconnectTimer) {
+        item.reconnecting = true;
+        item.reconnectTimer = setTimeout(failLost, RECONNECT_LIMIT_MS);
+        scheduleRender();
+      }
     };
   }
 
   function resetForQueue(item) {
+    clearReconnectTimer(item);
     item.status = 'queued';
+    if (isVideoDownload(item)) item.format = videoFormat();
     item.percent = null;
     item.downloadedBytes = null;
     item.totalBytes = null;
@@ -3190,6 +3328,7 @@
   }
 
   function stopConnections(item) {
+    clearReconnectTimer(item);
     if (item.source) item.source.close();
     if (item.upload) item.upload.abort();
   }
@@ -3259,6 +3398,20 @@
     for (const item of queued) startSingleItem(item);
   }
 
+  qualityButton.addEventListener('click', () => {
+    originalQuality = !originalQuality;
+    try {
+      localStorage.setItem(QUALITY_STORAGE_KEY, originalQuality ? '1' : '0');
+    } catch {}
+    for (const item of items) {
+      if (isVideoDownload(item) && ['queued', 'canceled', 'invalid', 'failed'].includes(item.status)) {
+        item.format = videoFormat();
+      }
+    }
+    updateQualityButton();
+    render();
+  });
+
   compressButton.addEventListener('click', () => {
     compressOpen = !compressOpen;
     if (compressOpen && inputClipOpen) {
@@ -3304,6 +3457,7 @@
 
   clipInputButton.addEventListener('click', () => {
     inputClipOpen = !inputClipOpen;
+    if (inputClipOpen) inputClipUserSet = true;
     if (inputClipOpen && compressOpen) {
       compressOpen = false;
       updateCompressMenu();
@@ -3318,6 +3472,7 @@
   });
 
   inputClipStart.addEventListener('input', () => {
+    inputClipUserSet = true;
     resetClipView(inputClipView);
     inputClipView.focus = 'start';
     setStatus('');
@@ -3325,6 +3480,7 @@
     updateControls();
   });
   inputClipEnd.addEventListener('input', () => {
+    inputClipUserSet = true;
     resetClipView(inputClipView);
     inputClipView.focus = 'end';
     setStatus('');
@@ -3344,6 +3500,7 @@
     }
     inputClipPreviewOpen = !inputClipPreviewOpen;
     inputClipPreviewAutoPlay = inputClipPreviewOpen;
+    inputClipPreviewRegenUsed = false;
     updateControls();
     if (inputClipPreviewOpen && !inputClipPreviewSource) {
       void loadInputClipPreview();
@@ -3368,6 +3525,7 @@
   inputClipClear.addEventListener('click', () => {
     inputClipStart.value = '';
     inputClipEnd.value = '';
+    inputClipUserSet = false;
     inputClipPreviewOpen = false;
     inputClipPreviewAutoPlay = false;
     resetClipView(inputClipView);
@@ -3410,6 +3568,7 @@
   }
 
   urlInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Backspace') lastBackspaceAt = 0;
     if (event.key === 'Backspace' && urlInput.value.length > 0) {
       const now = Date.now();
       if (event.repeat || now - lastBackspaceAt < DOUBLE_BACKSPACE_MS) {
@@ -3446,6 +3605,7 @@
       updateCompressMenu();
     }
     resetInputMetadataIfUrlChanged();
+    resetInputClipIfVideoChanged();
     populateInputClipFromUrl();
     updateControls();
     if (inputClipOpen) {
@@ -3453,6 +3613,7 @@
       scheduleInputClipPreview();
     }
   });
+  updateQualityButton();
   render();
 </script>
 </body>

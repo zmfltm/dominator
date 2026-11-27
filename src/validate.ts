@@ -52,7 +52,7 @@ const SOUNDCLOUD_HOSTS = new Set([
   'api-v2.soundcloud.com',
 ]);
 
-export type Format = 'mp4' | 'mp3' | 'audio';
+export type Format = 'mp4' | 'original' | 'mp3' | 'audio';
 
 export const MAX_CLIP_SECONDS = 24 * 60 * 60;
 export const MAX_PLAYLIST_TRACKS = 500;
@@ -83,8 +83,8 @@ export function parseJobRequest(body: unknown): ParseResult {
     return { ok: false, error: 'request body must be a JSON object' };
   }
   const { url, format, clip, playlist } = body as Record<string, unknown>;
-  if (format !== 'mp4' && format !== 'mp3' && format !== 'audio') {
-    return { ok: false, error: "format must be 'mp4', 'mp3', or 'audio'" };
+  if (format !== 'mp4' && format !== 'original' && format !== 'mp3' && format !== 'audio') {
+    return { ok: false, error: "format must be 'mp4', 'original', 'mp3', or 'audio'" };
   }
   const parsedClip = parseClipRange(clip);
   if (!parsedClip.ok) {
@@ -127,10 +127,13 @@ export function parseJobRequest(body: unknown): ParseResult {
   if (parsedPlaylist.value && format !== 'audio') {
     return { ok: false, error: 'playlist positions are only supported for SoundCloud audio' };
   }
+  // Pass on the WHATWG-normalized URL, not the raw string. yt-dlp parses URLs
+  // with Python's urlsplit, which disagrees on inputs like a backslash before
+  // '@' and would otherwise see a different host than the allowlist checked.
   return {
     ok: true,
     value: {
-      url,
+      url: parsed.href,
       format,
       ...(parsedClip.value ? { clip: parsedClip.value } : {}),
       ...(parsedPlaylist.value ? { playlist: parsedPlaylist.value } : {}),

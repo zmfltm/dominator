@@ -3,8 +3,16 @@ import { spawnSync } from 'node:child_process';
 import { app } from './app';
 import { setHevcSupported } from './compress';
 import { probeFfmpegHevc, probeFfmpegNetwork } from './ffmpeg';
-import { reapStaleJobs, setSectionDownloads, sweepLeftoverDirs } from './jobs';
-import { reapStalePreviews } from './previews';
+import {
+  reapStaleJobs,
+  setSectionDownloads,
+  setStartupSweep,
+  stopAllJobs,
+  sweepLeftoverDirs,
+} from './jobs';
+import { stopAllMetadata } from './metadata';
+import { reapStalePreviews, stopAllPreviews } from './previews';
+import { stopAllSoundCloud } from './soundcloud';
 
 function checkBinary(name: string, versionArgs: string[]): void {
   const result = spawnSync(name, versionArgs, { stdio: 'ignore' });
@@ -51,14 +59,42 @@ setInterval(() => {
   reapStalePreviews().catch((err) => console.error('stale preview reap failed:', err));
 }, REAP_INTERVAL_MS).unref();
 
-serve({ fetch: app.fetch, hostname, port: 3000 }, async (info) => {
-  // Bind first so a second instance cannot erase the running instance's temp files.
+// Gate temp dir creation until the post-bind sweep finishes, while binding
+// first so a second instance cannot erase the running instance's temp files.
+let resolveStartupSweep!: () => void;
+setStartupSweep(new Promise<void>((resolve) => {
+  resolveStartupSweep = resolve;
+}));
+
+const server = serve({ fetch: app.fetch, hostname, port: 3000 }, async (info) => {
   try {
     await sweepLeftoverDirs();
   } catch (err) {
     console.error('startup temp sweep failed:', err);
+  } finally {
+    resolveStartupSweep();
   }
   console.log(
     `dominator ready: http://127.0.0.1:${info.port} (listening on ${hostname})`,
   );
 });
+
+// Children are spawned detached, so the terminal's signal does not reach them.
+// Kill them before exiting; a second signal exits immediately.
+let shuttingDown = false;
+function shutdown(signal: NodeJS.Signals): void {
+  if (shuttingDown) {
+    process.exit(1);
+  }
+  shuttingDown = true;
+  console.log(`${signal} received, stopping downloads`);
+  server.close();
+  void Promise.allSettled([
+    stopAllJobs(),
+    stopAllPreviews(),
+    stopAllMetadata(),
+    stopAllSoundCloud(),
+  ]).then(() => process.exit(0));
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

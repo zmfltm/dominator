@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
+import { waitForStartupSweep } from './jobs';
 import { fetchVideoMetadata } from './metadata';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import type { Storyboard } from './storyboard';
@@ -41,6 +42,7 @@ export interface Preview {
   completedAt?: number;
 }
 
+const previewChildren = new Set<ChildProcessByStdio<null, null, Readable>>();
 const previews = new Map<string, Preview>();
 const previewByUrl = new Map<string, string>();
 const startingPreviewByUrl = new Map<string, Promise<Preview>>();
@@ -198,6 +200,7 @@ async function createPreview(url: string): Promise<Preview> {
   startingPreviews += 1;
   let dir: string;
   try {
+    await waitForStartupSweep();
     dir = await mkdtemp(join(tmpdir(), PREVIEW_TEMP_PREFIX));
   } catch (err) {
     startingPreviews -= 1;
@@ -218,6 +221,24 @@ async function createPreview(url: string): Promise<Preview> {
     console.error(`preview generation cleanup failed for ${preview.id}:`, err);
   });
   return preview;
+}
+
+// Kills every running preview child, waits for exits (or timeoutMs), and
+// removes preview temp directories so shutdown leaves nothing behind.
+export async function stopAllPreviews(timeoutMs = 6000): Promise<void> {
+  const dirs = [...previews.values()].map((preview) => preview.dir);
+  const exits = [...previewChildren].map((child) => new Promise<void>((resolve) => {
+    child.once('close', () => resolve());
+    signalProcessTree(child, 'SIGTERM');
+    setTimeout(() => signalProcessTree(child, 'SIGKILL'), 3000).unref();
+  }));
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([Promise.all(exits), timeout]);
+  clearTimeout(timer);
+  await Promise.allSettled(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
 }
 
 export async function deletePreview(id: string): Promise<void> {
@@ -340,6 +361,8 @@ function runProcess(
       return;
     }
 
+    previewChildren.add(child);
+    child.once('close', () => previewChildren.delete(child));
     let stderr = '';
     let settled = false;
     let timedOut = false;

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
 import { parseYouTubeStoryboards, type Storyboard } from './storyboard';
 import { isYouTubeUrl } from './validate';
@@ -16,8 +16,23 @@ const MAX_METADATA_OUTPUT = 2 * 1024 * 1024;
 
 let runningMetadata = 0;
 const metadataWaiters: Array<() => void> = [];
+const metadataChildren = new Set<ChildProcess>();
 const metadataByUrl = new Map<string, Promise<VideoMetadata>>();
 const cachedMetadata = new Map<string, { value: VideoMetadata; expiresAt: number }>();
+
+export async function stopAllMetadata(timeoutMs = 3000): Promise<void> {
+  const exits = [...metadataChildren].map((child) => new Promise<void>((resolve) => {
+    child.once('close', () => resolve());
+    signalProcessTree(child, 'SIGTERM');
+    setTimeout(() => signalProcessTree(child, 'SIGKILL'), 1500).unref();
+  }));
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([Promise.all(exits), timeout]);
+  clearTimeout(timer);
+}
 
 export class MetadataError extends Error {
   constructor(message: string) {
@@ -197,6 +212,8 @@ function runVideoMetadata(url: string, timeoutMs: number, fast: boolean): Promis
       detached: DETACH_CHILD_PROCESS,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    metadataChildren.add(child);
+    child.once('close', () => metadataChildren.delete(child));
 
     let stdout = '';
     let stderr = '';

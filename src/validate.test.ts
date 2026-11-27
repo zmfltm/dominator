@@ -253,7 +253,7 @@ describe('parseJobRequest', () => {
 
   it('rejects unknown formats', () => {
     const result = parseJobRequest({ url: 'https://youtu.be/x', format: 'wav' });
-    expect(result).toEqual({ ok: false, error: "format must be 'mp4', 'mp3', or 'audio'" });
+    expect(result).toEqual({ ok: false, error: "format must be 'mp4', 'original', 'mp3', or 'audio'" });
   });
 
   it('rejects non-object bodies', () => {
@@ -273,5 +273,33 @@ describe('isTwitterUrl', () => {
     expect(isTwitterUrl('https://youtu.be/dQw4w9WgXcQ')).toBe(false);
     expect(isTwitterUrl('https://x.com.evil.example/user/status/1')).toBe(false);
     expect(isTwitterUrl('not a url')).toBe(false);
+  });
+});
+
+describe('original quality format', () => {
+  it('accepts original quality for video hosts', () => {
+    expect(parseJobRequest({
+      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      format: 'original',
+      clip: { start: 1, end: 5 },
+    })).toEqual({
+      ok: true,
+      value: {
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        format: 'original',
+        clip: { start: 1, end: 5 },
+      },
+    });
+  });
+
+  it('rejects unknown formats', () => {
+    expect(parseJobRequest({ url: 'https://youtu.be/x', format: '4k' }).ok).toBe(false);
+  });
+});
+
+describe('url normalization', () => {
+  it('passes on the normalized URL so yt-dlp sees the allowlisted host', () => {
+    const result = parseJobRequest({ url: 'http://youtube.com\\@127.0.0.1:8000/x', format: 'mp4' });
+    expect(result.ok && result.value.url).toBe('http://youtube.com/@127.0.0.1:8000/x');
   });
 });

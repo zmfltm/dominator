@@ -18,7 +18,8 @@ import {
   type CompressOptions,
 } from './compress';
 import { DETACH_CHILD_PROCESS, signalProcessTree } from './process';
-import { parseProgressLine, type ProgressEvent } from './progress';
+import { fitFileName } from './filename';
+import { createProgressTracker, type ProgressEvent } from './progress';
 import { isSoundCloudUrl, isTwitterUrl, isYouTubeUrl, type JobRequest } from './validate';
 import { youtubeExtractorArgs } from './ytdlp';
 
@@ -44,9 +45,20 @@ const TITLE_PRINT_PREFIX = 'DOMINATOR_TITLE:';
 // Otherwise the whole video is downloaded and trimmed locally. Set at startup
 // from probeFfmpegNetwork().
 let sectionDownloads = false;
+let startupSweep: Promise<void> = Promise.resolve();
 
 export function setSectionDownloads(enabled: boolean): void {
   sectionDownloads = enabled;
+}
+
+// Holds new temp directory creation until the post-bind startup sweep finishes,
+// preventing a race between startup cleanup and early requests.
+export function setStartupSweep(promise: Promise<void>): void {
+  startupSweep = promise.catch(() => {});
+}
+
+export function waitForStartupSweep(): Promise<void> {
+  return startupSweep;
 }
 
 export class JobLimitError extends Error {
@@ -91,6 +103,10 @@ let startingJobs = 0;
 
 const FORMAT_ARGS: Record<JobRequest['format'], string[]> = {
   mp4: ['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b'],
+  // Highest resolution, frame rate, and bitrate the site offers (4K and up),
+  // in whatever codec it serves. yt-dlp picks the merge container (often
+  // WebM or MKV for VP9/AV1), so nothing is re-encoded.
+  original: ['-f', 'bv*+ba/b'],
   mp3: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
   audio: ['-f', 'bestaudio/best'],
 };
@@ -116,6 +132,12 @@ const YOUTUBE_DOWNLOAD_ARGS = ['--throttled-rate', '100K', '--http-chunk-size', 
 const H264_SORT_ARGS = ['-S', 'vcodec:h264,res,acodec:aac'];
 
 function formatArgs(request: JobRequest): string[] {
+  if (request.format === 'original') {
+    // Resolution first, then HLS over the throttled progressive MP4s.
+    return isTwitterUrl(request.url)
+      ? [...FORMAT_ARGS.original, '-S', 'res,fps,proto:m3u8_native']
+      : FORMAT_ARGS.original;
+  }
   if (request.format !== 'mp4') return FORMAT_ARGS[request.format];
   const selector = isTwitterUrl(request.url) ? TWITTER_MP4_FORMAT_ARGS : FORMAT_ARGS.mp4;
   return [...selector, ...H264_SORT_ARGS];
@@ -143,9 +165,18 @@ export function formatClipTimestamp(seconds: number): string {
   return `${base}.${fraction}`;
 }
 
-export function clipOutputPath(inputPath: string, format: JobRequest['format']): string {
+// Original-quality clips keep the downloaded container when stream-copied.
+// A re-encoded fallback is H.264/AAC, so it goes to MP4.
+export function clipOutputPath(
+  inputPath: string,
+  format: JobRequest['format'],
+  options: { reencode?: boolean } = {},
+): string {
   const parsed = parse(inputPath);
-  return join(parsed.dir, `${parsed.name}.clip.${format}`);
+  const extension = format !== 'original'
+    ? format
+    : options.reencode ? 'mp4' : parsed.ext.slice(1) || 'mkv';
+  return join(parsed.dir, fitFileName(parsed.name, `.clip.${extension}`));
 }
 
 export function buildFfmpegCopyClipArgs(
@@ -208,14 +239,41 @@ export function parseJobTitleLine(line: string): string | undefined {
   return title && title !== 'NA' ? title : undefined;
 }
 
+// yt-dlp's --force-keyframes-at-cuts omits `-c copy`, which makes ffmpeg fall
+// back to its container default encoder (very slow libvpx-vp9 on WebM). Force
+// fast H.264/AAC encoding matching the local trim profiles instead.
+function sectionClipArgs(request: JobRequest): string[] {
+  const base = [
+    '--download-sections',
+    `*${request.clip!.start}-${request.clip!.end}`,
+    // Cut on the requested frames instead of the nearest keyframes.
+    '--force-keyframes-at-cuts',
+  ];
+  if (request.format === 'original') {
+    return [
+      ...base,
+      '--merge-output-format',
+      'mkv',
+      '--downloader-args',
+      'ffmpeg_o:-c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 18 -c:a aac -b:a 256k',
+    ];
+  }
+  if (request.format === 'mp4') {
+    return [
+      ...base,
+      '--downloader-args',
+      'ffmpeg_o:-c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 23 -c:a aac -b:a 160k -movflags +faststart',
+    ];
+  }
+  return base;
+}
+
 export function buildYtDlpArgs(
   request: JobRequest,
   dir: string,
   options: { sections?: boolean; fast?: boolean } = {},
 ): string[] {
-  const section = options.sections && request.clip
-    ? ['--download-sections', `*${request.clip.start}-${request.clip.end}`]
-    : [];
+  const section = options.sections && request.clip ? sectionClipArgs(request) : [];
   return [
     '--ignore-config',
     ...youtubeExtractorArgs(request.url, { fast: options.fast }),
@@ -242,6 +300,42 @@ function playlistFilenamePrefix(request: JobRequest): string {
   if (!request.playlist) return '';
   const width = Math.max(2, String(request.playlist.count).length);
   return `${String(request.playlist.index).padStart(width, '0')} - `;
+}
+
+// A stream copy can only start on a keyframe. Reads ffprobe's
+// `pts_time,flags` CSV for packets around the clip start.
+export const KEYFRAME_TOLERANCE_SECONDS = 0.05;
+
+export function buildKeyframeProbeArgs(inputPath: string, start: number): string[] {
+  return [
+    '-v',
+    'error',
+    '-select_streams',
+    'v:0',
+    '-show_entries',
+    'packet=pts_time,flags',
+    '-of',
+    'csv=p=0',
+    '-read_intervals',
+    `${start}%+0.5`,
+    '--',
+    inputPath,
+  ];
+}
+
+// ffmpeg `-ss <start> -c copy` always seeks backward to a keyframe at or before
+// `start`, so only keyframes at/before `start` (within tolerance) can copy cleanly.
+export function hasKeyframeNearStart(
+  probeOutput: string,
+  start: number,
+  tolerance = KEYFRAME_TOLERANCE_SECONDS,
+): boolean {
+  return probeOutput.split('\n').some((line) => {
+    const [pts, flags] = line.trim().split(',');
+    if (!flags?.startsWith('K')) return false;
+    const time = Number(pts);
+    return Number.isFinite(time) && time <= start + 0.001 && start - time <= tolerance;
+  });
 }
 
 function ffmpegBaseClipArgs(inputPath: string, clip: Clip): string[] {
@@ -297,11 +391,11 @@ function ffmpegReencodeOutputArgs(format: JobRequest['format']): string[] {
     '-preset',
     'veryfast',
     '-crf',
-    '23',
+    format === 'original' ? '18' : '23',
     '-c:a',
     'aac',
     '-b:a',
-    '160k',
+    format === 'original' ? '256k' : '160k',
     '-movflags',
     '+faststart',
   ];
@@ -350,6 +444,41 @@ function stopJob(job: Job, status: 'canceled' | 'error', message: string): void 
   forceKill.unref();
 }
 
+// Stops every running job, waits for children to exit (or timeoutMs), and
+// removes job temp directories so a shutting-down server leaves nothing behind.
+export async function stopAllJobs(timeoutMs = 6000): Promise<void> {
+  const exits: Promise<void>[] = [];
+  const dirs: string[] = [];
+  for (const job of jobs.values()) {
+    dirs.push(job.dir);
+    const child = job.child;
+    if (job.status === 'running') {
+      if (isChildAlive(child)) exits.push(waitForExit(child));
+      stopJob(job, 'canceled', 'server shutting down');
+    } else if (isChildAlive(child)) {
+      exits.push(waitForExit(child));
+      signalProcessTree(child, 'SIGKILL');
+    }
+  }
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([Promise.all(exits), timeout]);
+  clearTimeout(timer);
+  await Promise.allSettled(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
+}
+
+function waitForExit(child: NonNullable<Job['child']>): Promise<void> {
+  return new Promise((resolve) => {
+    if (!isChildAlive(child)) {
+      resolve();
+      return;
+    }
+    child.once('close', () => resolve());
+  });
+}
+
 function activeJobCount(): number {
   let count = startingJobs;
   for (const job of jobs.values()) {
@@ -374,6 +503,7 @@ export async function startJob(request: JobRequest): Promise<Job> {
   startingJobs += 1;
   let dir: string;
   try {
+    await waitForStartupSweep();
     dir = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
   } catch (err) {
     startingJobs -= 1;
@@ -431,6 +561,7 @@ function spawnDownload(
   let pending = '';
   let lastEmitted: ProgressEvent | null = null;
   let lastEmittedAt = 0;
+  const trackProgress = createProgressTracker();
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
     pending += chunk;
@@ -446,7 +577,7 @@ function spawnDownload(
           continue;
         }
       }
-      const progress = parseProgressLine(line);
+      const progress = trackProgress(line);
       if (!progress) continue;
       job.lastProgress = progress;
       const now = Date.now();
@@ -467,6 +598,10 @@ function spawnDownload(
     if (job.status !== 'running') return;
     if (code !== 0) {
       if (fastYouTube && isYouTubeUrl(request.url)) {
+        // Drop partial streams from the failed attempt so findDownloadedFile
+        // cannot pick a leftover video-only .fNNN file.
+        await emptyDir(dir).catch(() => {});
+        if (job.status !== 'running') return;
         spawnDownload(job, request, dir, useSections, false);
         return;
       }
@@ -495,6 +630,11 @@ function spawnDownload(
   });
 }
 
+async function emptyDir(dir: string): Promise<void> {
+  const entries = await readdir(dir);
+  await Promise.all(entries.map((name) => rm(join(dir, name), { recursive: true, force: true })));
+}
+
 async function findDownloadedFile(dir: string): Promise<string | undefined> {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = entries
@@ -514,15 +654,23 @@ async function trimDownloadedFile(
   format: JobRequest['format'],
 ): Promise<string> {
   emitProgress(job, { stage: 'processing' });
-  const outputPath = clipOutputPath(inputPath, format);
+  let outputPath = clipOutputPath(inputPath, format);
 
-  const copyError = await runFfmpeg(
-    job,
-    buildFfmpegCopyClipArgs(inputPath, outputPath, clip, format),
-  );
+  const accurateCopy = await canCopyClipAccurately(job, inputPath, clip, format);
+  if (job.status !== 'running') return outputPath;
+
+  const copyError = accurateCopy
+    ? await runFfmpeg(job, buildFfmpegCopyClipArgs(inputPath, outputPath, clip, format))
+    : 'clip start is not on a keyframe';
   if (job.status !== 'running') return outputPath;
 
   if (copyError) {
+    const reencodePath = clipOutputPath(inputPath, format, { reencode: true });
+    if (reencodePath !== outputPath) {
+      await rm(outputPath, { force: true });
+      outputPath = reencodePath;
+      if (job.status !== 'running') return outputPath;
+    }
     const encodeError = await runFfmpeg(
       job,
       buildFfmpegReencodeClipArgs(inputPath, outputPath, clip, format),
@@ -541,6 +689,27 @@ async function trimDownloadedFile(
   return outputPath;
 }
 
+// Audio-only output copies packet by packet, so it is already accurate. For
+// video, copy only when a keyframe sits at the clip start; otherwise ffmpeg
+// would snap back to the previous keyframe and the clip would start early.
+async function canCopyClipAccurately(
+  job: Job,
+  inputPath: string,
+  clip: Clip,
+  format: JobRequest['format'],
+): Promise<boolean> {
+  if (format === 'mp3' || format === 'audio' || clip.start === 0) return true;
+  const lines: string[] = [];
+  const error = await runJobProcess(
+    job,
+    'ffprobe',
+    buildKeyframeProbeArgs(inputPath, clip.start),
+    (line) => lines.push(line),
+  );
+  if (error) return false;
+  return hasKeyframeNearStart(lines.join('\n'), clip.start);
+}
+
 function emitProgress(job: Job, progress: ProgressEvent): void {
   job.lastProgress = progress;
   job.events.emit('progress', progress);
@@ -551,15 +720,26 @@ function runFfmpeg(
   args: string[],
   onStdoutLine?: (line: string) => void,
 ): Promise<string | null> {
+  return runJobProcess(job, 'ffmpeg', args, onStdoutLine);
+}
+
+// Spawns a job-owned child (ffmpeg or ffprobe) as job.child so cancel and
+// timeout can kill its process tree.
+function runJobProcess(
+  job: Job,
+  command: 'ffmpeg' | 'ffprobe',
+  args: string[],
+  onStdoutLine?: (line: string) => void,
+): Promise<string | null> {
   return new Promise((resolve) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
     try {
-      child = spawn('ffmpeg', args, {
+      child = spawn(command, args, {
         detached: DETACH_CHILD_PROCESS,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (err) {
-      resolve(`failed to start ffmpeg: ${(err as Error).message}`);
+      resolve(`failed to start ${command}: ${(err as Error).message}`);
       return;
     }
 
@@ -586,7 +766,7 @@ function runFfmpeg(
     });
 
     child.on('error', (err) => {
-      settle(`failed to start ffmpeg: ${err.message}`);
+      settle(`failed to start ${command}: ${err.message}`);
     });
 
     child.on('close', (code, signal) => {
@@ -616,6 +796,7 @@ export async function startCompressJob(
   startingJobs += 1;
   let dir: string;
   try {
+    await waitForStartupSweep();
     dir = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
   } catch (err) {
     startingJobs -= 1;
