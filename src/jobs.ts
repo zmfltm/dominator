@@ -483,6 +483,10 @@ function spawnDownload(
     if (job.status !== 'running') return;
     if (code !== 0) {
       if (fastYouTube && isYouTubeUrl(request.url)) {
+        // Drop partial streams from the failed attempt so findDownloadedFile
+        // cannot pick a leftover video-only .fNNN file.
+        await emptyDir(dir).catch(() => {});
+        if (job.status !== 'running') return;
         spawnDownload(job, request, dir, useSections, false);
         return;
       }
@@ -509,6 +513,11 @@ function spawnDownload(
       failJob(job, `could not prepare output: ${(err as Error).message}`);
     }
   });
+}
+
+async function emptyDir(dir: string): Promise<void> {
+  const entries = await readdir(dir);
+  await Promise.all(entries.map((name) => rm(join(dir, name), { recursive: true, force: true })));
 }
 
 async function findDownloadedFile(dir: string): Promise<string | undefined> {
@@ -543,6 +552,7 @@ async function trimDownloadedFile(
     if (reencodePath !== outputPath) {
       await rm(outputPath, { force: true });
       outputPath = reencodePath;
+      if (job.status !== 'running') return outputPath;
     }
     const encodeError = await runFfmpeg(
       job,

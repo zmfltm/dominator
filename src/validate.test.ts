@@ -296,3 +296,10 @@ describe('original quality format', () => {
     expect(parseJobRequest({ url: 'https://youtu.be/x', format: '4k' }).ok).toBe(false);
   });
 });
+
+describe('url normalization', () => {
+  it('passes on the normalized URL so yt-dlp sees the allowlisted host', () => {
+    const result = parseJobRequest({ url: 'http://youtube.com\\@127.0.0.1:8000/x', format: 'mp4' });
+    expect(result.ok && result.value.url).toBe('http://youtube.com/@127.0.0.1:8000/x');
+  });
+});

@@ -127,10 +127,13 @@ export function parseJobRequest(body: unknown): ParseResult {
   if (parsedPlaylist.value && format !== 'audio') {
     return { ok: false, error: 'playlist positions are only supported for SoundCloud audio' };
   }
+  // Pass on the WHATWG-normalized URL, not the raw string. yt-dlp parses URLs
+  // with Python's urlsplit, which disagrees on inputs like a backslash before
+  // '@' and would otherwise see a different host than the allowlist checked.
   return {
     ok: true,
     value: {
-      url,
+      url: parsed.href,
       format,
       ...(parsedClip.value ? { clip: parsedClip.value } : {}),
       ...(parsedPlaylist.value ? { playlist: parsedPlaylist.value } : {}),
