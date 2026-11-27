@@ -297,14 +297,14 @@ describe('clip args', () => {
     expect(args).not.toContain('--merge-output-format');
   });
 
-  it('keeps the HLS preference for original-quality Twitter/X downloads', () => {
+  it('ranks resolution ahead of the HLS preference for original-quality Twitter/X', () => {
     const args = buildYtDlpArgs(
       { url: 'https://x.com/user/status/1349794411333394432', format: 'original' },
       '/tmp/dominator-test',
     );
 
-    expect(args[args.indexOf('-f') + 1].startsWith('bv*[ext=mp4][protocol^=m3u8]')).toBe(true);
-    expect(args).not.toContain('-S');
+    expect(args[args.indexOf('-f') + 1]).toBe('bv*+ba/b');
+    expect(args[args.indexOf('-S') + 1]).toBe('res,fps,proto:m3u8_native');
   });
 });
 

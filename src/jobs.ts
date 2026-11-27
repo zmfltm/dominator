@@ -121,7 +121,10 @@ const H264_SORT_ARGS = ['-S', 'vcodec:h264,res,acodec:aac'];
 
 function formatArgs(request: JobRequest): string[] {
   if (request.format === 'original') {
-    return isTwitterUrl(request.url) ? TWITTER_MP4_FORMAT_ARGS : FORMAT_ARGS.original;
+    // Resolution first, then HLS over the throttled progressive MP4s.
+    return isTwitterUrl(request.url)
+      ? [...FORMAT_ARGS.original, '-S', 'res,fps,proto:m3u8_native']
+      : FORMAT_ARGS.original;
   }
   if (request.format !== 'mp4') return FORMAT_ARGS[request.format];
   const selector = isTwitterUrl(request.url) ? TWITTER_MP4_FORMAT_ARGS : FORMAT_ARGS.mp4;
